@@ -98,7 +98,25 @@
 </head>
 <body tabindex="0">
 
-<h2>Motion COM Analyzer</h2>
+<div id="titleBlock" style="margin-bottom:10px;">
+
+  <div style="display:flex; align-items:flex-end; gap:8px;">
+    <h2 style="margin:0; font-size:32px;">Motion COM Analyzer</h2>
+    <span style="font-size:16px; font-style:italic; color:#555;">v1.0 Beta</span>
+  </div>
+
+  <!-- ★ サブタイトルを 2mm 左へ（margin-left:32px） -->
+  <div style="font-size:15px; color:#666; margin-top:-4px; margin-left:32px;">
+    – Digitizing Support Using MoveNet –
+  </div>
+
+</div>
+
+
+
+
+
+
 
 <style>
   #videoInput::-webkit-file-upload-text {
@@ -527,7 +545,6 @@ function drawCurrentFrame() {
   ctx.drawImage(video, -w / 2, -h / 2, w, h);
   ctx.restore();
 }
-
 /* ================================
    再描画
 ================================ */
@@ -543,6 +560,17 @@ function redrawAll() {
 
   drawPosePoints();
   drawMissingJointsLegend();
+
+  // ★ Frame No. 表示制御
+  const frameLabel = document.getElementById("frameNumber");
+
+  if (mode === "analysis") {
+    // 解析中だけ Frame No. を表示（1 始まり）
+    frameLabel.textContent = currentFrame + 1;
+  } else {
+    // 解析前は常に "–"
+    frameLabel.textContent = "–";
+  }
 }
 
 /* ================================
@@ -649,7 +677,7 @@ canvas.addEventListener("click", (e) => {
       const dy = calibrationPoints[1].y - calibrationPoints[0].y;
       const pixelDist = Math.hypot(dx, dy);
 
-      let realDist = parseFloat(prompt("Input the actual distance between two points (m)", "1.0"));
+      let realDist = parseFloat(prompt("Input the actual distance between two points (m).", "1.0"));
       if (!realDist || realDist <= 0) realDist = 1.0;
 
       calibrationScale = realDist / pixelDist;
@@ -1049,7 +1077,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
     const timeSec = f / fpsValue;
 
     const row = [
-      f.toString(),
+      (f + 1).toString(),
       timeSec.toFixed(3),
       hasEstimated ? "" : fmt(comX),
       hasEstimated ? "" : fmt(comY),
@@ -1106,7 +1134,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
     URL.revokeObjectURL(urlRaw);
   }
 
-  /* ⑥ 欠損チェック */
+  /* ⑥ 欠損チェック（未抽出座標の有無） */
   let hasMissing = false;
   KP_DEF.forEach(def => {
     const arrX = seriesMap[def.name].x;
@@ -1116,21 +1144,29 @@ function runSaveProcess(saveRaw, saveFiltered) {
     }
   });
 
-  /* ★ 欠損がある場合 → filtered 保存不可 */
-  if (saveFiltered && hasMissing) {
-    alert("Only the raw-data was saved because the analysis included unextracted coordinates.");
+  /* ⑦ Frame 数チェック（20 未満かどうか） */
+  const tooFewFrames = frameData.length < 20;
 
-    const next = confirm("Proceed New Analysis?\nCancel = Close Program");
-    if (next) location.reload();
-    else window.close();
-    return;
+  /* ⑧ Filtered 保存可否とメッセージ決定 */
+  let allowFiltered = saveFiltered;
+  let msg = "";
+
+  if (allowFiltered && hasMissing && !tooFewFrames) {
+    allowFiltered = false;
+    msg = "Only the raw-data was saved because the analysis included unextracted coordinates.";
+  } else if (allowFiltered && !hasMissing && tooFewFrames) {
+    allowFiltered = false;
+    msg = "Only the raw-data was saved because the number of frames is too less (no less than 20).";
+  } else if (allowFiltered && hasMissing && tooFewFrames) {
+    allowFiltered = false;
+    msg = "Only the raw-data was saved because the analysis included unextracted coordinates. Also, the number of frames is too less (no less than 20).";
   }
 
-  /* ⑦ 欠損なし → filtered 保存（saveFiltered が true の場合のみ） */
+  /* ⑨ filtered 保存（allowFiltered が true の場合のみ） */
   let filteredMap = {};
   let cfMap = {};
 
-  if (saveFiltered) {
+  if (allowFiltered) {
 
     KP_DEF.forEach(def => {
       const name = def.name;
@@ -1150,7 +1186,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
       };
     });
 
-    /* ⑧ filtered CSV 行生成 */
     const rowsFiltered = [];
     rowsFiltered.push(header.join(","));
 
@@ -1174,7 +1209,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
       const timeSec = f / fpsValue;
 
       const row = [
-        f.toString(),
+        (f + 1).toString(),
         timeSec.toFixed(3),
         fmt(comXf),
         fmt(comYf),
@@ -1207,7 +1242,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
       rowsFiltered.push(row.join(","));
     }
 
-    /* ⑨ cf-freq 行追加 */
     const cfRow = [];
     cfRow.push("cf-freq");
     cfRow.push("");
@@ -1238,7 +1272,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
 
     rowsFiltered.push(cfRow.join(","));
 
-    /* ⑩ filtered CSV 保存 */
     const csvContentFiltered = rowsFiltered.join("\r\n");
     const blobFiltered = new Blob([csvContentFiltered], { type: "text/csv" });
     const urlFiltered = URL.createObjectURL(blobFiltered);
@@ -1252,14 +1285,14 @@ function runSaveProcess(saveRaw, saveFiltered) {
     URL.revokeObjectURL(urlFiltered);
   }
 
-  /* ⑪ 完了メッセージ */
-  if (saveRaw && saveFiltered) {
+  /* ⑩ 完了メッセージ */
+  if (saveRaw && allowFiltered) {
     alert("Raw- and filtered data were saved completely.");
-  } else if (saveRaw && !saveFiltered) {
-    alert("Only the raw-data was saved because the analysis included unextracted coordinates.");
+  } else if (saveRaw && !allowFiltered && msg) {
+    alert(msg);
   }
 
-  /* ⑫ 終了処理 */
+  /* ⑪ 終了処理（fps を再び聞くルーティンには戻らない） */
   const next = confirm("Proceed New Analysis?\nCancel = Close Program");
   if (next) location.reload();
   else window.close();
