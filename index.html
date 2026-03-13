@@ -739,7 +739,7 @@ canvas.addEventListener("mouseup", () => {
 ================================ */
 startAnalysisBtn.addEventListener("click", () => {
   if (mode !== "ready") {
-    alert("There is unfinished processing.");
+    alert("未完了の作業があります");
     return;
   }
 
@@ -806,11 +806,11 @@ window.addEventListener("resize", resizeCanvasToFit);
 
 
 /* ============================================================
-   SECTION: Butterworth 4次フィルタ ＋ Winter 残差分析
+   SECTION: Butterworth 2次フィルタ ＋ Winter 残差分析
 ============================================================ */
 
-/* 4次 Butterworth ローパスフィルタ係数生成 */
-function butterworth4Coefficients(fs, fc) {
+/* 2次 Butterworth ローパスフィルタ係数生成 */
+function butterworth2Coefficients(fs, fc) {
   const ita = 1 / Math.tan(Math.PI * fc / fs);
   const q = Math.SQRT2;
 
@@ -840,7 +840,7 @@ function iirFilter(x, b, a) {
 
 /* ゼロ位相フィルタ（forward-backward） */
 function zeroPhaseFilter(x, fs, fc) {
-  const { b, a } = butterworth4Coefficients(fs, fc);
+  const { b, a } = butterworth2Coefficients(fs, fc);
 
   let y = iirFilter(x, b, a);
   y = iirFilter(y.slice().reverse(), b, a).reverse();
@@ -852,6 +852,7 @@ function zeroPhaseFilter(x, fs, fc) {
 function residualRMS(orig, filt) {
   let sum = 0;
   let count = 0;
+
   for (let i = 0; i < orig.length; i++) {
     if (orig[i] == null) continue;
     const d = orig[i] - filt[i];
@@ -940,7 +941,6 @@ function winterResidualAnalysis(orig, fs) {
 
 
 
-
 /* ============================================================
    保存処理本体（Raw / Filtered / Both）
 ============================================================ */
@@ -948,7 +948,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
 
   /* ① fps 選択 */
   let fpsChoice = prompt(
-    "Input fps:\n30 / 60 / 120 / 240 / Custom\n(If blank or canceled, 30)",
+    "Input fps:\n30 / 60 / 120 / 240 / Custom\n(空欄またはキャンセルで 30)",
     "30"
   );
   let fpsValue = 30;
@@ -1270,7 +1270,15 @@ function runSaveProcess(saveRaw, saveFiltered) {
 document.addEventListener("DOMContentLoaded", () => {
 
   // ★ Finish ボタン → パネル表示
-  document.getElementById("finishBtn").addEventListener("click", () => {
+document.getElementById("finishBtn").addEventListener("click", () => {
+
+    // ★ ① データが 1 フレームも無い場合は保存させない
+    if (!frameData || frameData.length === 0) {
+        alert("No data available for saving.");
+        return;
+    }
+
+    // ★ ② データがある場合のみ、保存するかどうかを聞く
     const save = confirm("Save coordinate CSV data?");
     if (!save) {
       const next = confirm("Proceed New Analysis?\nCancel = Close Program");
@@ -1278,6 +1286,7 @@ document.addEventListener("DOMContentLoaded", () => {
       else window.close();
       return;
     }
+
     document.getElementById("saveOptionsPanel").style.display = "block";
   });
 
