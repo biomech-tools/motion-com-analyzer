@@ -739,7 +739,7 @@ canvas.addEventListener("mouseup", () => {
 ================================ */
 startAnalysisBtn.addEventListener("click", () => {
   if (mode !== "ready") {
-    alert("未完了の作業があります");
+    alert("There is unfinished processing.");
     return;
   }
 
@@ -948,7 +948,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
 
   /* ① fps 選択 */
   let fpsChoice = prompt(
-    "Input fps:\n30 / 60 / 120 / 240 / Custom\n(空欄またはキャンセルで 30)",
+    "Input fps:\n30 / 60 / 120 / 240 / Custom\n(If blank or canceled, 30)",
     "30"
   );
   let fpsValue = 30;
