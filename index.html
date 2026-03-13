@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Motion COM Analyzer</title>
+
+  <!-- MoveNet Lightning -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection/dist/movenet.js"></script>
+
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  .canvas-container { position: relative; display: inline-block; }
+
+  #canvas {
+    border: 1px solid #ccc;
+    max-width: 100%;
+    height: auto;
+  }
+
+  #analysisButtons {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+
+  #fileRow {
+    margin-top: 8px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #message {
+    font-size: 13px;
+    font-weight: bold;
+    color: red;
+  }
+
+  #frameDisplay {
+    background: #007bff;
+    color: white;
+    padding: 4px 8px;
+    font-size: 13px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    width: fit-content;
+  }
+
+  .main-area {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin-top: 10px;
+  }
+
+  .main-area > div:last-child {
+    position: relative;
+  }
+
+  /* ★★★ Record Events の最終位置（ここだけ残す） ★★★ */
+  .event-panel {
+    position: absolute;
+    top: 12px;     /* ← Frame No. のすぐ下 */
+    left: 0;
+    width: 260px;
+    border: none;
+    padding: 6px 10px 10px 10px;
+    background: transparent;
+    pointer-events: auto; /* ← finishBtn を覆わない */
+  }
+
+  .event-panel h3 {
+    margin-bottom: 6px;
+  }
+
+  .event-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .bottom-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+</style>
+
+</head>
+<body tabindex="0">
+
+<h2>Motion COM Analyzer</h2>
+
+<style>
+  #videoInput::-webkit-file-upload-text {
+    visibility: hidden;
+  }
+  #videoInput::file-selector-button {
+  }
+
+  #videoInput {
+    color: transparent;
+    width: 115px;
+  }
+
+  #videoInput::file-selector-button {
+    color: black;
+  }
+
+  .event-memo {
+    width: 40%;
+  }
+</style>
+
+<div style="display: flex; align-items: center;">
+<button id="fileSelectBtn">Select a file</button>
+<input type="file" id="videoInput" style="display:none;">
+
+  <div id="fileRow" style="margin-left: 8px; font-size: 14px;">
+    <span id="fileName">Still no file selected.</span>
+    <span id="message"></span>
+  </div>
+</div>
+
+<video id="video" preload="auto" style="display:none"></video>
+
+<div class="main-area">
+
+  <div class="canvas-container">
+    <canvas id="canvas"></canvas>
+
+    <div id="keyHint" style="margin-top: 10px; font-size: 16px; display: none;">
+      Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame.
+      Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame.
+    </div>
+
+    <div id="analysisButtons">
+      <button id="startAnalysisBtn">Start Analysis</button>
+      <button id="finishBtn">Finish & Save data</button>
+    </div>
+  </div>
+
+  <div style="position: relative;">
+    <div id="frameDisplay">Frame No. <span id="frameNumber">0</span></div>
+
+    <div class="event-panel">
+      <h3>Record Events</h3>
+      <div class="event-row"><button>A</button><input class="event-memo"></div>
+      <div class="event-row"><button>B</button><input class="event-memo"></div>
+      <div class="event-row"><button>C</button><input class="event-memo"></div>
+      <div class="event-row"><button>D</button><input class="event-memo"></div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+/* ★ 下の CSS は event-panel の位置を上書きしないように調整済み ★ */
+.event-panel h3 {
+  margin-bottom: 6px;
+}
+
+.event-row {
+  margin-top: 4px;
+}
+</style>
+
+
+<script>
+
+/* ================================
+   要素・変数（Record Events 統合版）
+================================ */
+
+// ★ Select a file ボタン
+const fileSelectBtn = document.getElementById("fileSelectBtn");
+const videoInput = document.getElementById("videoInput");
+
+// ★ ボタン → input を開く
+fileSelectBtn.addEventListener("click", () => {
+  videoInput.click();
+});
+
+// 既存要素
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const message = document.getElementById("message");
+const fileNameSpan = document.getElementById("fileName");
+const frameNumberSpan = document.getElementById("frameNumber");
+
+const startAnalysisBtn = document.getElementById("startAnalysisBtn");
+
+let currentFrame = 0;
+let totalFrames = 0;
+let fps = 30;
+let frameDuration = 1 / fps;
+
+let mode = "idle";
+let horizontalPoints = [];
+let calibrationPoints = [];
+let rotationAngle = 0;
+let calibrationScale = 1;
+
+let detector = null;
+let joints = [];
+let com = null;
+let draggingIndex = null;
+
+let currentScale = 1;
+
+let frameData = [];
+
+const SCORE_TH = 0.4;
+const extractedFrames = [];
+
+/* ★★★ Record Events 用 ★★★ */
+let eventLogs = [];
+
+const KP_DEF = [
+  { id: 4,  name: "R-Ear",      side: "R" },
+  { id: 3,  name: "L-Ear",      side: "L" },
+  { id: 6,  name: "R-Shoulder", side: "R" },
+  { id: 5,  name: "L-Shoulder", side: "L" },
+  { id: 8,  name: "R-Elbow",    side: "R" },
+  { id: 7,  name: "L-Elbow",    side: "L" },
+  { id:10,  name: "R-Wrist",    side: "R" },
+  { id: 9,  name: "L-Wrist",    side: "L" },
+  { id:12,  name: "R-GT",       side: "R" },
+  { id:11,  name: "L-GT",       side: "L" },
+  { id:14,  name: "R-Knee",     side: "R" },
+  { id:13,  name: "L-Knee",     side: "L" },
+  { id:16,  name: "R-Ankle",    side: "R" },
+  { id:15,  name: "L-Ankle",    side: "L" }
+];
+
+/* ================================
+   動画読み込み・初期描画
+================================ */
+
+// ファイル選択で動画を読み込む
+videoInput.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  fileNameSpan.textContent = file.name;
+  message.textContent = "Movie loading...";
+});
+
+// メタデータ読み込み完了時にフレーム数などを設定
+video.addEventListener("loadedmetadata", () => {
+  const duration = video.duration; // 秒
+  // ここはあなたの設計どおりでOK。fps はグローバルの 30 を使うなら：
+  totalFrames = Math.floor(duration * fps);
+  frameDuration = 1 / fps;
+
+  resizeCanvasToFit();
+});
+
+// 最初のフレームが描ける状態になったら描画
+video.addEventListener("loadeddata", () => {
+  drawCurrentFrame();
+  redrawAll();
+  message.textContent = "Horizontal Adjustment: Click the first point.";
+  mode = "horizontal";
+});
+/* ================================
+   resizeCanvasToFit（外に1つだけ）
+================================ */
+function resizeCanvasToFit() {
+  const topMargin = 150;
+  const bottomMargin = 60;
+
+  const availableHeight = window.innerHeight - topMargin - bottomMargin;
+
+  const scaleH = availableHeight / video.videoHeight;
+
+  const availableWidth = window.innerWidth - 40;
+  const scaleW = availableWidth / video.videoWidth;
+
+  const scale = Math.min(scaleH, scaleW);
+
+  currentScale = scale;
+
+  canvas.style.height = (video.videoHeight * scale) + "px";
+  canvas.style.width  = (video.videoWidth  * scale) + "px";
+}
+
+/* ================================
+   ＋マーク描画（スケール対応）
+================================ */
+function drawPlus(x, y, color, size = 12) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 5;
+
+  ctx.beginPath();
+  ctx.moveTo(x - size, y);
+  ctx.lineTo(x + size, y);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x, y + size);
+  ctx.stroke();
+}
+
+/* ================================
+   水平補正・キャリブレーション
+================================ */
+function drawHorizontalPoints() {
+  horizontalPoints.forEach(p => drawPlus(p.x, p.y, "red", 11));
+}
+function drawCalibrationPoints() {
+  calibrationPoints.forEach(p => drawPlus(p.x, p.y, "blue", 11));
+}
+
+/* ================================
+   未抽出座標の凡例配置（新規）
+================================ */
+let blinkOn = true;
+setInterval(() => {
+  blinkOn = !blinkOn;
+  redrawAll();
+}, 250);
+
+function layoutMissingJointsLegend() {
+  if (!joints || joints.length === 0) return;
+
+  const missing = joints.filter(j => j.estimated);
+  if (missing.length === 0) return;
+
+  const placed = joints.filter(j => !j.estimated);
+
+  const canvasW = canvas.width;
+  const canvasH = canvas.height;
+
+  const maxX = placed.length ? Math.max(...placed.map(j => j.x)) : canvasW * 0.55;
+  const minX = placed.length ? Math.min(...placed.map(j => j.x)) : canvasW * 0.45;
+
+  let legendX = maxX + 80;
+  const labelWidth = 100;
+
+  if (legendX + labelWidth > canvasW) {
+    legendX = minX - labelWidth;
+  }
+
+  const baseY = canvasH * 0.35;
+  const gap = 40;
+
+  let idx = 0;
+  joints.forEach(j => {
+    if (j.estimated) {
+      j.x = legendX;
+      j.y = baseY + gap * idx++;
+    }
+  });
+}
+
+/* --------------------------------
+   未抽出座標の描画（点滅対応）
+-------------------------------- */
+function drawMissingJointsLegend() {
+  const missing = joints.filter(j => j.estimated);
+  if (missing.length === 0) return;
+
+  missing.forEach(j => {
+    if (blinkOn) {
+      drawPlus(j.x, j.y, "cyan", 12);
+
+      ctx.font = "bold 24px sans-serif";
+      ctx.fillStyle = "cyan";
+      ctx.fillText(j.part, j.x + 20, j.y - 14);
+    }
+  });
+}
+
+/* ================================
+   姿勢推定描画（スケール対応・COM点滅対応）
+================================ */
+function drawPosePoints() {
+  if (!joints) return;
+
+  const hasUnplaced = joints.some(j => j.estimated);
+
+  joints.forEach(j => {
+    if (j.x == null || j.y == null) return;
+
+    let color = (j.side === "R") ? "red" : "green";
+
+    if (j.estimated) {
+      color = blinkOn ? "cyan" : "rgba(0,255,255,0.3)";
+    }
+
+    drawPlus(j.x, j.y, color, 12);
+
+    if (!j.estimated) {
+      ctx.font = "bold 24px sans-serif";
+      ctx.fillStyle = color;
+      ctx.fillText(j.part, j.x + 14 * currentScale, j.y - 14 * currentScale);
+    }
+  });
+
+  if (com) {
+    const drawCOM = (!hasUnplaced || (hasUnplaced && blinkOn));
+
+    if (drawCOM) {
+      ctx.beginPath();
+      ctx.arc(com.x, com.y, 12, 0, Math.PI * 2);
+      ctx.fillStyle = "yellow";
+      ctx.fill();
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+  }
+}
+
+/* ================================
+   COM 計算（ピクセル座標用）
+================================ */
+function updateCOM() {
+  if (!joints || joints.length === 0) {
+    com = null;
+    return;
+  }
+
+  let sumX = 0, sumY = 0, count = 0;
+  joints.forEach(j => {
+    if (j.x != null && j.y != null) {
+      sumX += j.x;
+      sumY += j.y;
+      count++;
+    }
+  });
+
+  com = (count > 0) ? { x: sumX / count, y: sumY / count } : null;
+}
+
+/* ================================
+   MoveNet 初期化
+================================ */
+async function initDetector() {
+  detector = await poseDetection.createDetector(
+    poseDetection.SupportedModels.MoveNet,
+    {
+      modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+      enableSmoothing: false
+    }
+  );
+}
+document.addEventListener("DOMContentLoaded", async () => {
+  await tf.setBackend("webgl");
+  await tf.ready();
+  await initDetector();
+});
+
+/* ================================
+   MoveNet 推論
+================================ */
+async function runPoseEstimationOnCurrentFrame() {
+  if (!detector) return;
+
+  const small = document.createElement("canvas");
+  const sctx = small.getContext("2d");
+  small.width = 256;
+  small.height = 256;
+  sctx.drawImage(canvas, 0, 0, 256, 256);
+
+  const poses = await detector.estimatePoses(small);
+  if (!poses || poses.length === 0) {
+    joints = [];
+    com = null;
+    return;
+  }
+
+  const kp = poses[0].keypoints;
+  const scaleX = canvas.width / 256;
+  const scaleY = canvas.height / 256;
+
+  joints = KP_DEF.map(def => {
+    const p = kp[def.id];
+    const visible = p.score >= SCORE_TH || (def.name.includes("Ear") && p.score >= 0.2);
+
+    return {
+      x: p.x * scaleX,
+      y: p.y * scaleY,
+      part: def.name,
+      side: def.side,
+      estimated: !visible,
+      score: p.score
+    };
+  });
+
+  updateCOM();
+  layoutMissingJointsLegend();
+}
+
+/* ================================
+   フレーム描画（統一版）
+================================ */
+function drawCurrentFrame() {
+  if (video.readyState < 2) return;
+
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+
+  canvas.width = w;
+  canvas.height = h;
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(rotationAngle);
+  ctx.drawImage(video, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+/* ================================
+   再描画
+================================ */
+function redrawAll() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawCurrentFrame();
+
+  if (mode !== "analysis") {
+    drawHorizontalPoints();
+    drawCalibrationPoints();
+  }
+
+  drawPosePoints();
+  drawMissingJointsLegend();
+}
+
+/* ================================
+   フレーム移動（デコード完了を待つ版）
+================================ */
+async function seekToFrame(frame) {
+  return new Promise(resolve => {
+    let done = false;
+
+    const handler = () => {
+      if (!done) {
+        done = true;
+        video.removeEventListener("seeked", handler);
+        resolve();
+      }
+    };
+
+    video.addEventListener("seeked", handler);
+
+    video.currentTime = frame * frameDuration;
+    video.pause();
+
+    setTimeout(() => {
+      if (!done) {
+        done = true;
+        video.removeEventListener("seeked", handler);
+        resolve();
+      }
+    }, 200);
+  });
+}
+
+/* ================================
+   次のフレーム処理
+================================ */
+async function processNextFrame() {
+  if (currentFrame >= totalFrames) {
+    message.textContent = "Analysis complete.";
+    mode = "done";
+    return;
+  }
+
+  await seekToFrame(currentFrame);
+  drawCurrentFrame();
+  await runPoseEstimationOnCurrentFrame();
+  redrawAll();
+
+  frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+
+  frameNumberSpan.textContent = currentFrame;
+}
+
+/* ================================
+   クリック処理
+================================ */
+function getCanvasCoordinates(e) {
+  const rect = canvas.getBoundingClientRect();
+
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+canvas.addEventListener("click", (e) => {
+  const { x, y } = getCanvasCoordinates(e);
+
+  if (mode === "horizontal") {
+    horizontalPoints.push({ x, y });
+
+    if (horizontalPoints.length === 1) {
+      message.textContent = "Horizontal Adjustment: Click the second point.";
+      redrawAll();
+      return;
+    }
+
+    if (horizontalPoints.length === 2) {
+      const dx = horizontalPoints[1].x - horizontalPoints[0].x;
+      const dy = horizontalPoints[1].y - horizontalPoints[0].y;
+      rotationAngle = -Math.atan2(dy, dx);
+
+      calibrationPoints = [];
+      mode = "calibration";
+      message.textContent = "Calibration: Click the first point.";
+      redrawAll();
+      return;
+    }
+  }
+
+  if (mode === "calibration") {
+    calibrationPoints.push({ x, y });
+
+    if (calibrationPoints.length === 1) {
+      message.textContent = "Calibration: Click the second point.";
+      redrawAll();
+      return;
+    }
+
+    if (calibrationPoints.length === 2) {
+      const dx = calibrationPoints[1].x - calibrationPoints[0].x;
+      const dy = calibrationPoints[1].y - calibrationPoints[0].y;
+      const pixelDist = Math.hypot(dx, dy);
+
+      let realDist = parseFloat(prompt("Input the actual distance between two points (m)", "1.0"));
+      if (!realDist || realDist <= 0) realDist = 1.0;
+
+      calibrationScale = realDist / pixelDist;
+
+      mode = "ready";
+      message.textContent = "Analysis Ready: Please press the Start Analysis button.";
+      redrawAll();
+      return;
+    }
+  }
+});
+
+/* ================================
+   Record Events（A〜D）
+================================ */
+document.querySelectorAll(".event-row").forEach(row => {
+  const btn = row.querySelector("button");
+  const input = row.querySelector("input");
+
+  btn.addEventListener("click", () => {
+    if (mode !== "analysis") {
+      alert("解析中のみイベントを記録できます");
+      return;
+    }
+
+    const label = input.value.trim() !== "" ? input.value.trim() : btn.textContent;
+
+    eventLogs.push({
+      frame: currentFrame,
+      label: label
+    });
+
+    alert(`Memorized Event ${label}.`);
+
+    btn.blur();
+  });
+});
+
+/* ================================
+   ドラッグ修正（★修正版★）
+================================ */
+canvas.addEventListener("mousedown", (e) => {
+  if (mode !== "analysis") return;
+
+  const { x, y } = getCanvasCoordinates(e);
+
+  draggingIndex = null;
+  joints.forEach((j, i) => {
+    if (j.x != null && j.y != null) {
+      if (Math.hypot(j.x - x, j.y - y) < 15) {
+        draggingIndex = i;
+      }
+    }
+  });
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (draggingIndex === null) return;
+
+  const { x, y } = getCanvasCoordinates(e);
+
+  // 座標を更新
+  joints[draggingIndex].x = x;
+  joints[draggingIndex].y = y;
+
+  // 手動修正したので estimated = false にする
+  joints[draggingIndex].estimated = false;
+
+  updateCOM();
+  redrawAll();
+});
+
+canvas.addEventListener("mouseup", () => {
+  // ドラッグ終了
+  if (draggingIndex !== null && mode === "analysis") {
+    // ★★★ ここが今回の修正の核心 ★★★
+    // 修正後の joints を frameData に反映する
+    frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+  }
+
+  draggingIndex = null;
+});
+
+
+/* ================================
+   解析開始ボタン
+================================ */
+startAnalysisBtn.addEventListener("click", () => {
+  if (mode !== "ready") {
+    alert("未完了の作業があります");
+    return;
+  }
+
+  currentFrame = 0;
+  mode = "analysis";
+  message.textContent = "Analyzing...";
+
+  startAnalysisBtn.style.display = "none";
+
+  document.getElementById("keyHint").style.display = "block";
+
+  processNextFrame();
+});
+
+/* ================================
+   ESC / Enter キー入力
+================================ */
+document.body.setAttribute("tabindex", "0");
+document.body.focus();
+
+document.body.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter" && mode === "analysis") {
+    currentFrame++;
+    processNextFrame();
+    return;
+  }
+
+  if (e.key === "Escape" && mode === "analysis") {
+    if (currentFrame <= 0) return;
+
+    currentFrame--;
+    await seekToFrame(currentFrame);
+    drawCurrentFrame();
+    await runPoseEstimationOnCurrentFrame();
+    redrawAll();
+    frameNumberSpan.textContent = currentFrame;
+    return;
+  }
+});
+
+/* ================================
+   前フレームへ戻る
+================================ */
+const prevFrameBtn = document.getElementById("prevFrameBtn");
+if (prevFrameBtn) {
+  prevFrameBtn.addEventListener("click", async () => {
+    if (mode !== "analysis") return;
+    if (currentFrame <= 0) return;
+
+    currentFrame--;
+
+    await seekToFrame(currentFrame);
+    drawCurrentFrame();
+    await runPoseEstimationOnCurrentFrame();
+    redrawAll();
+    frameNumberSpan.textContent = currentFrame;
+  });
+}
+
+/* ================================
+   リサイズ対応
+================================ */
+window.addEventListener("resize", resizeCanvasToFit);
+
+
+/* ============================================================
+   SECTION: Butterworth 4次フィルタ ＋ Winter 残差分析
+============================================================ */
+
+/* 4次 Butterworth ローパスフィルタ係数生成 */
+function butterworth4Coefficients(fs, fc) {
+  const ita = 1 / Math.tan(Math.PI * fc / fs);
+  const q = Math.SQRT2;
+
+  const b0 = 1 / (1 + q * ita + ita * ita);
+  const b1 = 2 * b0;
+  const b2 = b0;
+
+  const a1 = 2 * (ita * ita - 1) * b0;
+  const a2 = (1 - q * ita + ita * ita) * b0;
+
+  return { b: [b0, b1, b2], a: [1, a1, a2] };
+}
+
+/* IIR フィルタ（1方向） */
+function iirFilter(x, b, a) {
+  const y = new Array(x.length).fill(0);
+
+  for (let n = 0; n < x.length; n++) {
+    y[n] = b[0] * x[n]
+         + (n - 1 >= 0 ? b[1] * x[n - 1] : 0)
+         + (n - 2 >= 0 ? b[2] * x[n - 2] : 0)
+         - (n - 1 >= 0 ? a[1] * y[n - 1] : 0)
+         - (n - 2 >= 0 ? a[2] * y[n - 2] : 0);
+  }
+  return y;
+}
+
+/* ゼロ位相フィルタ（forward-backward） */
+function zeroPhaseFilter(x, fs, fc) {
+  const { b, a } = butterworth4Coefficients(fs, fc);
+
+  let y = iirFilter(x, b, a);
+  y = iirFilter(y.slice().reverse(), b, a).reverse();
+
+  return y;
+}
+
+/* 残差 RMS 計算（null は無視） */
+function residualRMS(orig, filt) {
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < orig.length; i++) {
+    if (orig[i] == null) continue;
+    const d = orig[i] - filt[i];
+    sum += d * d;
+    count++;
+  }
+  if (count === 0) return 0;
+  return Math.sqrt(sum / count);
+}
+
+/* 線形回帰（x[], y[]）→ {a, b} */
+function linearRegression(xs, ys) {
+  const n = xs.length;
+  if (n === 0) return { a: 0, b: 0 };
+
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    const x = xs[i];
+    const y = ys[i];
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0) return { a: 0, b: sumY / n };
+
+  const a = (n * sumXY - sumX * sumY) / denom;
+  const b = (sumY - a * sumX) / n;
+  return { a, b };
+}
+
+/* Winter 法：残差分析で最適 fc を決定し、フィルタ後系列を返す */
+function winterResidualAnalysis(orig, fs) {
+  const candidates = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+
+  // 欠損を埋めた系列（簡易：直前値保持）
+  const filled = [];
+  let last = 0;
+  for (let i = 0; i < orig.length; i++) {
+    if (orig[i] == null) {
+      filled[i] = last;
+    } else {
+      filled[i] = orig[i];
+      last = orig[i];
+    }
+  }
+
+  const rmsList = [];
+  const filtList = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const fc = candidates[i];
+    const filt = zeroPhaseFilter(filled, fs, fc);
+    const rms = residualRMS(orig, filt);
+    rmsList.push(rms);
+    filtList.push(filt);
+  }
+
+  // 低周波側（4,6,8 Hz）の直線近似
+  const lowXs = candidates.slice(0, 3);
+  const lowYs = rmsList.slice(0, 3);
+  const { a, b } = linearRegression(lowXs, lowYs);
+
+  // 直線と残差曲線の差が最小の fc を膝とみなす
+  let bestIdx = 0;
+  let bestDiff = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const fc = candidates[i];
+    const lineVal = a * fc + b;
+    const diff = Math.abs(rmsList[i] - lineVal);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestIdx = i;
+    }
+  }
+
+  const bestFc = candidates[bestIdx];
+  const bestFilt = filtList[bestIdx];
+
+  return { fc: bestFc, filtered: bestFilt };
+}
+
+
+
+
+
+
+
+/* ============================================================
+   保存処理本体（Raw / Filtered / Both）
+============================================================ */
+function runSaveProcess(saveRaw, saveFiltered) {
+
+  /* ① fps 選択 */
+  let fpsChoice = prompt(
+    "Input fps:\n30 / 60 / 120 / 240 / Custom\n(空欄またはキャンセルで 30)",
+    "30"
+  );
+  let fpsValue = 30;
+
+  if (!fpsChoice || fpsChoice.trim() === "") {
+    fpsValue = 30;
+  } else {
+    fpsChoice = fpsChoice.trim().toLowerCase();
+    if (["30", "60", "120", "240"].includes(fpsChoice)) {
+      fpsValue = parseFloat(fpsChoice);
+    } else {
+      let custom = prompt("Custom fps を入力してください（例: 200）", "30");
+      let v = parseFloat(custom);
+      if (!v || v <= 0) v = 30;
+      fpsValue = v;
+    }
+  }
+
+  /* ② 座標変換準備 */
+  let baselineY = 0;
+  if (horizontalPoints.length >= 2) {
+    baselineY = (horizontalPoints[0].y + horizontalPoints[1].y) / 2;
+  }
+  const scale = calibrationScale || 1.0;
+
+  /* ③ CSV ヘッダ */
+  const header = [
+    "Frame No.","Time (s)","COM-X (m)","COM-Y (m)",
+    "R-Ear-X (m)","R-Ear-Y (m)","L-Ear-X (m)","L-Ear-Y (m)",
+    "R-Shoulder-X (m)","R-Shoulder-Y (m)","L-Shoulder-X (m)","L-Shoulder-Y (m)",
+    "R-Elbow-X (m)","R-Elbow-Y (m)","L-Elbow-X (m)","L-Elbow-Y (m)",
+    "R-Wrist-X (m)","R-Wrist-Y (m)","L-Wrist-X (m)","L-Wrist-Y (m)",
+    "R-GT-X (m)","R-GT-Y (m)","L-GT-X (m)","L-GT-Y (m)",
+    "R-Knee-X (m)","R-Knee-Y (m)","L-Knee-X (m)","L-Knee-Y (m)",
+    "R-Ankle-X (m)","R-Ankle-Y (m)","L-Ankle-X (m)","L-Ankle-Y (m)"
+  ];
+  header.push("Event");
+
+  const rowsRaw = [];
+  rowsRaw.push(header.join(","));
+
+  /* ④ 生データ CSV 用の行生成 ＋ seriesMap（フィルタ用） */
+  const seriesMap = {};
+  KP_DEF.forEach(def => {
+    seriesMap[def.name] = { x: [], y: [] };
+  });
+
+  for (let f = 0; f < frameData.length; f++) {
+    const jointsFrame = frameData[f];
+
+    if (!jointsFrame || jointsFrame.length === 0) {
+      KP_DEF.forEach(def => {
+        seriesMap[def.name].x.push(null);
+        seriesMap[def.name].y.push(null);
+      });
+      continue;
+    }
+
+    const hasEstimated = jointsFrame.some(j => j.estimated);
+
+    let sumX = 0, sumY = 0, count = 0;
+    jointsFrame.forEach(j => {
+      if (!j.estimated && j.x != null && j.y != null) {
+        const x0 = j.x * scale;
+        const y0 = -(j.y - baselineY) * scale;
+        sumX += x0;
+        sumY += y0;
+        count++;
+      }
+    });
+    const comX = (count > 0) ? (sumX / count) : null;
+    const comY = (count > 0) ? (sumY / count) : null;
+
+    function getJoint(defName) {
+      return jointsFrame.find(j => j.part === defName) || null;
+    }
+    function conv(j) {
+      if (!j || j.estimated || j.x == null || j.y == null) return { x: null, y: null };
+      return {
+        x: j.x * scale,
+        y: -(j.y - baselineY) * scale
+      };
+    }
+
+    const jointConv = {};
+    KP_DEF.forEach(def => {
+      jointConv[def.name] = conv(getJoint(def.name));
+    });
+
+    KP_DEF.forEach(def => {
+      const p = jointConv[def.name];
+      seriesMap[def.name].x.push(p.x);
+      seriesMap[def.name].y.push(p.y);
+    });
+
+    function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
+
+    const timeSec = f / fpsValue;
+
+    const row = [
+      f.toString(),
+      timeSec.toFixed(3),
+      hasEstimated ? "" : fmt(comX),
+      hasEstimated ? "" : fmt(comY),
+
+      fmt(jointConv["R-Ear"].x), fmt(jointConv["R-Ear"].y),
+      fmt(jointConv["L-Ear"].x), fmt(jointConv["L-Ear"].y),
+
+      fmt(jointConv["R-Shoulder"].x), fmt(jointConv["R-Shoulder"].y),
+      fmt(jointConv["L-Shoulder"].x), fmt(jointConv["L-Shoulder"].y),
+
+      fmt(jointConv["R-Elbow"].x), fmt(jointConv["R-Elbow"].y),
+      fmt(jointConv["L-Elbow"].x), fmt(jointConv["L-Elbow"].y),
+
+      fmt(jointConv["R-Wrist"].x), fmt(jointConv["R-Wrist"].y),
+      fmt(jointConv["L-Wrist"].x), fmt(jointConv["L-Wrist"].y),
+
+      fmt(jointConv["R-GT"].x), fmt(jointConv["R-GT"].y),
+      fmt(jointConv["L-GT"].x), fmt(jointConv["L-GT"].y),
+
+      fmt(jointConv["R-Knee"].x), fmt(jointConv["R-Knee"].y),
+      fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
+
+      fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
+      fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y)
+    ];
+
+    const ev = eventLogs.find(e => e.frame === f);
+    row.push(ev ? ev.label : "");
+
+    rowsRaw.push(row.join(","));
+  }
+
+  /* ⑤ raw CSV 保存（saveRaw が true の場合のみ） */
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+
+  const baseFilename = `CoodinateCSV-${yyyy}${mm}${dd}-${hh}${mi}`;
+
+  if (saveRaw) {
+    const csvContentRaw = rowsRaw.join("\r\n");
+    const blobRaw = new Blob([csvContentRaw], { type: "text/csv" });
+    const urlRaw = URL.createObjectURL(blobRaw);
+
+    const aRaw = document.createElement("a");
+    aRaw.href = urlRaw;
+    aRaw.download = `${baseFilename}.csv`;
+    document.body.appendChild(aRaw);
+    aRaw.click();
+    document.body.removeChild(aRaw);
+    URL.revokeObjectURL(urlRaw);
+  }
+
+  /* ⑥ 欠損チェック */
+  let hasMissing = false;
+  KP_DEF.forEach(def => {
+    const arrX = seriesMap[def.name].x;
+    const arrY = seriesMap[def.name].y;
+    if (arrX.some(v => v == null) || arrY.some(v => v == null)) {
+      hasMissing = true;
+    }
+  });
+
+  /* ★ 欠損がある場合 → filtered 保存不可 */
+  if (saveFiltered && hasMissing) {
+    alert("Only the raw-data was saved because the analysis included unextracted coordinates.");
+
+    const next = confirm("Proceed New Analysis?\nCancel = Close Program");
+    if (next) location.reload();
+    else window.close();
+    return;
+  }
+
+  /* ⑦ 欠損なし → filtered 保存（saveFiltered が true の場合のみ） */
+  let filteredMap = {};
+  let cfMap = {};
+
+  if (saveFiltered) {
+
+    KP_DEF.forEach(def => {
+      const name = def.name;
+      const sx = seriesMap[name].x;
+      const sy = seriesMap[name].y;
+
+      const resX = winterResidualAnalysis(sx, fpsValue);
+      const resY = winterResidualAnalysis(sy, fpsValue);
+
+      filteredMap[name] = {
+        x: resX.filtered,
+        y: resY.filtered
+      };
+      cfMap[name] = {
+        x: resX.fc,
+        y: resY.fc
+      };
+    });
+
+    /* ⑧ filtered CSV 行生成 */
+    const rowsFiltered = [];
+    rowsFiltered.push(header.join(","));
+
+    for (let f = 0; f < frameData.length; f++) {
+
+      let sumX = 0, sumY = 0, count = 0;
+      KP_DEF.forEach(def => {
+        const x = filteredMap[def.name].x[f];
+        const y = filteredMap[def.name].y[f];
+        if (x != null && y != null) {
+          sumX += x;
+          sumY += y;
+          count++;
+        }
+      });
+      const comXf = (count > 0) ? (sumX / count) : null;
+      const comYf = (count > 0) ? (sumY / count) : null;
+
+      function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
+
+      const timeSec = f / fpsValue;
+
+      const row = [
+        f.toString(),
+        timeSec.toFixed(3),
+        fmt(comXf),
+        fmt(comYf),
+
+        fmt(filteredMap["R-Ear"].x[f]), fmt(filteredMap["R-Ear"].y[f]),
+        fmt(filteredMap["L-Ear"].x[f]), fmt(filteredMap["L-Ear"].y[f]),
+
+        fmt(filteredMap["R-Shoulder"].x[f]), fmt(filteredMap["R-Shoulder"].y[f]),
+        fmt(filteredMap["L-Shoulder"].x[f]), fmt(filteredMap["L-Shoulder"].y[f]),
+
+        fmt(filteredMap["R-Elbow"].x[f]), fmt(filteredMap["R-Elbow"].y[f]),
+        fmt(filteredMap["L-Elbow"].x[f]), fmt(filteredMap["L-Elbow"].y[f]),
+
+        fmt(filteredMap["R-Wrist"].x[f]), fmt(filteredMap["R-Wrist"].y[f]),
+        fmt(filteredMap["L-Wrist"].x[f]), fmt(filteredMap["L-Wrist"].y[f]),
+
+        fmt(filteredMap["R-GT"].x[f]), fmt(filteredMap["R-GT"].y[f]),
+        fmt(filteredMap["L-GT"].x[f]), fmt(filteredMap["L-GT"].y[f]),
+
+        fmt(filteredMap["R-Knee"].x[f]), fmt(filteredMap["R-Knee"].y[f]),
+        fmt(filteredMap["L-Knee"].x[f]), fmt(filteredMap["L-Knee"].y[f]),
+
+        fmt(filteredMap["R-Ankle"].x[f]), fmt(filteredMap["R-Ankle"].y[f]),
+        fmt(filteredMap["L-Ankle"].x[f]), fmt(filteredMap["L-Ankle"].y[f])
+      ];
+
+      const ev = eventLogs.find(e => e.frame === f);
+      row.push(ev ? ev.label : "");
+
+      rowsFiltered.push(row.join(","));
+    }
+
+    /* ⑨ cf-freq 行追加 */
+    const cfRow = [];
+    cfRow.push("cf-freq");
+    cfRow.push("");
+    cfRow.push("");
+    cfRow.push("");
+
+    function pushCf(name) {
+      cfRow.push(cfMap[name].x.toFixed(1));
+      cfRow.push(cfMap[name].y.toFixed(1));
+    }
+
+    pushCf("R-Ear");
+    pushCf("L-Ear");
+    pushCf("R-Shoulder");
+    pushCf("L-Shoulder");
+    pushCf("R-Elbow");
+    pushCf("L-Elbow");
+    pushCf("R-Wrist");
+    pushCf("L-Wrist");
+    pushCf("R-GT");
+    pushCf("L-GT");
+    pushCf("R-Knee");
+    pushCf("L-Knee");
+    pushCf("R-Ankle");
+    pushCf("L-Ankle");
+
+    cfRow.push("");
+
+    rowsFiltered.push(cfRow.join(","));
+
+    /* ⑩ filtered CSV 保存 */
+    const csvContentFiltered = rowsFiltered.join("\r\n");
+    const blobFiltered = new Blob([csvContentFiltered], { type: "text/csv" });
+    const urlFiltered = URL.createObjectURL(blobFiltered);
+
+    const aFiltered = document.createElement("a");
+    aFiltered.href = urlFiltered;
+    aFiltered.download = `${baseFilename}-filtered.csv`;
+    document.body.appendChild(aFiltered);
+    aFiltered.click();
+    document.body.removeChild(aFiltered);
+    URL.revokeObjectURL(urlFiltered);
+  }
+
+  /* ⑪ 完了メッセージ */
+  if (saveRaw && saveFiltered) {
+    alert("Raw- and filtered data were saved completely.");
+  } else if (saveRaw && !saveFiltered) {
+    alert("Only the raw-data was saved because the analysis included unextracted coordinates.");
+  }
+
+  /* ⑫ 終了処理 */
+  const next = confirm("Proceed New Analysis?\nCancel = Close Program");
+  if (next) location.reload();
+  else window.close();
+}
+
+/* ★★★ ここに貼る（script の中） ★★★ */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  // ★ Finish ボタン → パネル表示
+  document.getElementById("finishBtn").addEventListener("click", () => {
+    const save = confirm("Save coordinate CSV data?");
+    if (!save) {
+      const next = confirm("Proceed New Analysis?\nCancel = Close Program");
+      if (next) location.reload();
+      else window.close();
+      return;
+    }
+    document.getElementById("saveOptionsPanel").style.display = "block";
+  });
+
+  // ★ OK ボタン → 保存処理へ
+  document.getElementById("saveOptionsOk").addEventListener("click", () => {
+    const saveRaw = document.getElementById("saveRaw").checked;
+    const saveFiltered = document.getElementById("saveFiltered").checked;
+
+    document.getElementById("saveOptionsPanel").style.display = "none";
+
+    runSaveProcess(saveRaw, saveFiltered);
+  });
+
+  // ★ Cancel ボタン → パネル閉じるだけ
+  document.getElementById("saveOptionsCancel").addEventListener("click", () => {
+    document.getElementById("saveOptionsPanel").style.display = "none";
+  });
+
+});
+
+</script>   <!-- ← script はここで閉じる（1 回だけ） -->
+
+<div id="saveOptionsPanel" 
+     style="display:none; position:fixed; top:30%; left:50%; transform:translateX(-50%);
+            background:white; border:1px solid #ccc; padding:20px; z-index:999999;">
+  <h3>Select data to save</h3>
+
+  <label><input type="checkbox" id="saveRaw" checked> Raw-data</label><br>
+  <label><input type="checkbox" id="saveFiltered" checked> Filtered-data</label><br><br>
+
+  <button id="saveOptionsOk">OK</button>
+  <button id="saveOptionsCancel">Cancel</button>
+</div>
+
+</body>
+</html>
