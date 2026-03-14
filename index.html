@@ -14,11 +14,12 @@
   body { font-family: sans-serif; margin: 20px; }
   .canvas-container { position: relative; display: inline-block; }
 
-  #canvas {
-    border: 1px solid #ccc;
-    max-width: 100%;
-    height: auto;
-  }
+#canvas {
+  border: 1px solid #ccc;
+  width: auto;      /* ← 画像の本来の幅を維持 */
+  height: auto;     /* ← アスペクト比維持 */
+  max-width: none;  /* ← ブラウザ幅で縮小されるのを防ぐ */
+}
 
   #analysisButtons {
     position: absolute;
@@ -105,9 +106,9 @@
     <span style="font-size:16px; font-style:italic; color:#555;">v1.0 Beta</span>
   </div>
 
-  <!-- ★ サブタイトルを 2mm 左へ（margin-left:32px） -->
-  <div style="font-size:15px; color:#666; margin-top:-4px; margin-left:32px;">
-    – Digitizing Support Using MoveNet –
+  <!-- ★ サブタイトルを ?mm 左へ（margin-left:??px） -->
+  <div style="font-size:12px; color:#666; margin-top:-4px; margin-left:2px;">
+    – Aiding the manual digitization of joint coordinates using Pose Estimation –
   </div>
 
 </div>
@@ -128,10 +129,19 @@
   #videoInput {
     color: transparent;
     width: 115px;
+    display: none; /* ← ここで非表示になっている */
   }
 
   #videoInput::file-selector-button {
     color: black;
+  }
+
+  /* ★ 3つのボタンの高さを38pxにする（正しい対象に適用） */
+  #fileSelectBtn,
+  #startAnalysisBtn,
+  #finishBtn {
+    height: 36px;
+    font-size: 16px;
   }
 
   .event-memo {
@@ -170,13 +180,30 @@
   <div style="position: relative;">
     <div id="frameDisplay">Frame No. <span id="frameNumber">0</span></div>
 
-    <div class="event-panel">
-      <h3>Record Events</h3>
-      <div class="event-row"><button>A</button><input class="event-memo"></div>
-      <div class="event-row"><button>B</button><input class="event-memo"></div>
-      <div class="event-row"><button>C</button><input class="event-memo"></div>
-      <div class="event-row"><button>D</button><input class="event-memo"></div>
-    </div>
+<div class="event-panel">
+  <h3>Record Events</h3>
+
+  <div class="event-row">
+    <button style="height: 30px; padding: 0 15px; font-size: 15px;">A</button>
+    <input class="event-memo">
+  </div>
+
+  <div class="event-row">
+    <button style="height: 30px; padding: 0 15px; font-size: 15px;">B</button>
+    <input class="event-memo">
+  </div>
+
+  <div class="event-row">
+    <button style="height: 30px; padding: 0 15px; font-size: 15px;">C</button>
+    <input class="event-memo">
+  </div>
+
+  <div class="event-row">
+    <button style="height: 30px; padding: 0 15px; font-size: 15px;">D</button>
+    <input class="event-memo">
+  </div>
+
+</div>
   </div>
 
 </div>
@@ -288,7 +315,8 @@ video.addEventListener("loadedmetadata", () => {
 });
 
 // 最初のフレームが描ける状態になったら描画
-video.addEventListener("loadeddata", () => {
+video.addEventListener("loadedmetadata", () => {
+
   drawCurrentFrame();
   redrawAll();
   message.textContent = "Horizontal Adjustment: Click the first point.";
