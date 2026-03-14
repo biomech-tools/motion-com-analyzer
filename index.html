@@ -701,18 +701,28 @@ canvas.addEventListener("click", (e) => {
     }
 
     if (calibrationPoints.length === 2) {
-      const dx = calibrationPoints[1].x - calibrationPoints[0].x;
-      const dy = calibrationPoints[1].y - calibrationPoints[0].y;
-      const pixelDist = Math.hypot(dx, dy);
 
-      let realDist = parseFloat(prompt("Input the actual distance between two points (m).", "1.0"));
-      if (!realDist || realDist <= 0) realDist = 1.0;
-
-      calibrationScale = realDist / pixelDist;
-
-      mode = "ready";
-      message.textContent = "Analysis Ready: Please press the Start Analysis button.";
+      // ★ まず2点目の＋を描画
       redrawAll();
+
+      // ★★★ ここが今回の唯一の修正ポイント ★★★
+      // requestAnimationFrame ではなく setTimeout(…, 0) を使う
+      setTimeout(() => {
+        const dx = calibrationPoints[1].x - calibrationPoints[0].x;
+        const dy = calibrationPoints[1].y - calibrationPoints[0].y;
+        const pixelDist = Math.hypot(dx, dy);
+
+        let realDist = parseFloat(prompt("Input the actual distance between two points (m).", "1.0"));
+        if (!realDist || realDist <= 0) realDist = 1.0;
+
+        calibrationScale = realDist / pixelDist;
+
+        mode = "ready";
+        message.textContent = "Analysis Ready: Please press the Start Analysis button.";
+
+        redrawAll();
+      }, 0);
+
       return;
     }
   }
@@ -743,7 +753,6 @@ document.querySelectorAll(".event-row").forEach(row => {
     btn.blur();
   });
 });
-
 /* ================================
    ドラッグ修正（★修正版★）
 ================================ */
