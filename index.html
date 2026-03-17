@@ -248,7 +248,7 @@ const startAnalysisBtn = document.getElementById("startAnalysisBtn");
 
 let currentFrame = 0;
 let totalFrames = 0;
-let fps = 30;
+let fps = 29.97;
 let frameDuration = 1 / fps;
 
 let mode = "idle";
@@ -290,7 +290,7 @@ const KP_DEF = [
 ];
 
 /* ================================
-   動画読み込み・初期描画
+   動画読み込み・初期描画（fps 未確定版）
 ================================ */
 
 // ファイル選択で動画を読み込む
@@ -304,24 +304,24 @@ videoInput.addEventListener("change", (e) => {
   message.textContent = "Movie loading...";
 });
 
-// メタデータ読み込み完了時にフレーム数などを設定
+// メタデータ読み込み完了時
 video.addEventListener("loadedmetadata", () => {
-  const duration = video.duration; // 秒
-  // ここはあなたの設計どおりでOK。fps はグローバルの 30 を使うなら：
-  totalFrames = Math.floor(duration * fps);
-  frameDuration = 1 / fps;
+
+  /* ★ fps はキャリブレーション後に決まるので、
+        ここでは totalFrames を確定しない ★ */
 
   resizeCanvasToFit();
 });
 
 // 最初のフレームが描ける状態になったら描画
 video.addEventListener("loadedmetadata", () => {
-
   drawCurrentFrame();
   redrawAll();
   message.textContent = "Horizontal Adjustment: Click the first point.";
   mode = "horizontal";
 });
+
+
 /* ================================
    resizeCanvasToFit（外に1つだけ）
 ================================ */
@@ -652,11 +652,10 @@ async function processNextFrame() {
 }
 
 /* ================================
-   クリック処理
+   クリック処理（fps 選択追加版）
 ================================ */
 function getCanvasCoordinates(e) {
   const rect = canvas.getBoundingClientRect();
-
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
 
@@ -669,6 +668,9 @@ function getCanvasCoordinates(e) {
 canvas.addEventListener("click", (e) => {
   const { x, y } = getCanvasCoordinates(e);
 
+  /* ------------------------------
+     水平補正
+  ------------------------------ */
   if (mode === "horizontal") {
     horizontalPoints.push({ x, y });
 
@@ -691,6 +693,9 @@ canvas.addEventListener("click", (e) => {
     }
   }
 
+  /* ------------------------------
+     キャリブレーション
+  ------------------------------ */
   if (mode === "calibration") {
     calibrationPoints.push({ x, y });
 
@@ -702,11 +707,8 @@ canvas.addEventListener("click", (e) => {
 
     if (calibrationPoints.length === 2) {
 
-      // ★ まず2点目の＋を描画
       redrawAll();
 
-      // ★★★ ここが今回の唯一の修正ポイント ★★★
-      // requestAnimationFrame ではなく setTimeout(…, 0) を使う
       setTimeout(() => {
         const dx = calibrationPoints[1].x - calibrationPoints[0].x;
         const dy = calibrationPoints[1].y - calibrationPoints[0].y;
@@ -716,6 +718,46 @@ canvas.addEventListener("click", (e) => {
         if (!realDist || realDist <= 0) realDist = 1.0;
 
         calibrationScale = realDist / pixelDist;
+
+        /* -----------------------------------------
+           ★★★ ここで fps を選択（安全な唯一の場所）★★★
+        ----------------------------------------- */
+        let fpsChoice = prompt(
+          "Select FPS:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)",
+          "30"
+        );
+
+        function toActualFPS(n) {
+          if (n === 30) return 29.97;
+          if (n === 60) return 59.94;
+          if (n === 90) return 90.00;
+          if (n === 120) return 119.88;
+          if (n === 240) return 239.76;
+          return n; // custom real fps
+        }
+
+        let fpsNum = 30;
+
+        if (!fpsChoice || fpsChoice.trim() === "") {
+          fpsNum = 30;
+        } else {
+          fpsChoice = fpsChoice.trim().toLowerCase();
+          if (["30","60","90","120","240"].includes(fpsChoice)) {
+            fpsNum = parseFloat(fpsChoice);
+          } else {
+            let custom = prompt("Input real fps (e.g., 200)", "30");
+            let v = parseFloat(custom);
+            if (!v || v <= 0) v = 30;
+            fpsNum = v;
+          }
+        }
+
+        /* 実 fps に変換 */
+        fps = toActualFPS(fpsNum);
+
+        /* fps に基づいて内部値を再計算 */
+        frameDuration = 1 / fps;
+        totalFrames = Math.floor(video.duration * fps);
 
         mode = "ready";
         message.textContent = "Analysis Ready: Please press the Start Analysis button.";
@@ -727,7 +769,6 @@ canvas.addEventListener("click", (e) => {
     }
   }
 });
-
 /* ================================
    Record Events（A〜D）
 ================================ */
@@ -1007,30 +1048,12 @@ function winterResidualAnalysis(orig, fs) {
 
 
 /* ============================================================
-   保存処理本体（Raw / Filtered / Both）
+   保存処理本体（Raw / Filtered / Both）【fpsValue 廃止版】
 ============================================================ */
 function runSaveProcess(saveRaw, saveFiltered) {
 
-  /* ① fps 選択 */
-  let fpsChoice = prompt(
-    "Input fps:\n30 / 60 / 120 / 240 / Custom\n(Blank or Cancel: 30)",
-    "30"
-  );
-  let fpsValue = 30;
-
-  if (!fpsChoice || fpsChoice.trim() === "") {
-    fpsValue = 30;
-  } else {
-    fpsChoice = fpsChoice.trim().toLowerCase();
-    if (["30", "60", "120", "240"].includes(fpsChoice)) {
-      fpsValue = parseFloat(fpsChoice);
-    } else {
-      let custom = prompt("Custom fps を入力してください（例: 200）", "30");
-      let v = parseFloat(custom);
-      if (!v || v <= 0) v = 30;
-      fpsValue = v;
-    }
-  }
+  /* ★★★ fpsValue は廃止。fps をそのまま使用 ★★★ */
+  // fps はキャリブレーション後に決定済み
 
   /* ② 座標変換準備 */
   let baselineY = 0;
@@ -1048,9 +1071,9 @@ function runSaveProcess(saveRaw, saveFiltered) {
     "R-Wrist-X (m)","R-Wrist-Y (m)","L-Wrist-X (m)","L-Wrist-Y (m)",
     "R-GT-X (m)","R-GT-Y (m)","L-GT-X (m)","L-GT-Y (m)",
     "R-Knee-X (m)","R-Knee-Y (m)","L-Knee-X (m)","L-Knee-Y (m)",
-    "R-Ankle-X (m)","R-Ankle-Y (m)","L-Ankle-X (m)","L-Ankle-Y (m)"
+    "R-Ankle-X (m)","R-Ankle-Y (m)","L-Ankle-X (m)","L-Ankle-Y (m)",
+    "Event"
   ];
-  header.push("Event");
 
   const rowsRaw = [];
   rowsRaw.push(header.join(","));
@@ -1111,7 +1134,8 @@ function runSaveProcess(saveRaw, saveFiltered) {
 
     function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
 
-    const timeSec = f / fpsValue;
+    /* ★★★ 時間計算は fps に統一 ★★★ */
+    const timeSec = f / fps;
 
     const row = [
       (f + 1).toString(),
@@ -1138,16 +1162,15 @@ function runSaveProcess(saveRaw, saveFiltered) {
       fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
 
       fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
-      fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y)
-    ];
+      fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y),
 
-    const ev = eventLogs.find(e => e.frame === f);
-    row.push(ev ? ev.label : "");
+      (eventLogs.find(e => e.frame === f)?.label || "")
+    ];
 
     rowsRaw.push(row.join(","));
   }
 
-  /* ⑤ raw CSV 保存（saveRaw が true の場合のみ） */
+  /* ⑤ raw CSV 保存 */
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -1171,7 +1194,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
     URL.revokeObjectURL(urlRaw);
   }
 
-  /* ⑥ 欠損チェック（未抽出座標の有無） */
+  /* ⑥ 欠損チェック */
   let hasMissing = false;
   KP_DEF.forEach(def => {
     const arrX = seriesMap[def.name].x;
@@ -1181,10 +1204,10 @@ function runSaveProcess(saveRaw, saveFiltered) {
     }
   });
 
-  /* ⑦ Frame 数チェック（20 未満かどうか） */
+  /* ⑦ Frame 数チェック */
   const tooFewFrames = frameData.length < 20;
 
-  /* ⑧ Filtered 保存可否とメッセージ決定 */
+  /* ⑧ Filtered 保存可否 */
   let allowFiltered = saveFiltered;
   let msg = "";
 
@@ -1199,19 +1222,19 @@ function runSaveProcess(saveRaw, saveFiltered) {
     msg = "Only the raw-data was saved because the analysis included unextracted coordinates. Also, the number of frames is too less (no less than 20).";
   }
 
-  /* ⑨ filtered 保存（allowFiltered が true の場合のみ） */
+  /* ⑨ filtered 保存 */
   let filteredMap = {};
   let cfMap = {};
 
   if (allowFiltered) {
-
     KP_DEF.forEach(def => {
       const name = def.name;
       const sx = seriesMap[name].x;
       const sy = seriesMap[name].y;
 
-      const resX = winterResidualAnalysis(sx, fpsValue);
-      const resY = winterResidualAnalysis(sy, fpsValue);
+      /* ★★★ Winter 法も fps に統一 ★★★ */
+      const resX = winterResidualAnalysis(sx, fps);
+      const resY = winterResidualAnalysis(sy, fps);
 
       filteredMap[name] = {
         x: resX.filtered,
@@ -1227,7 +1250,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
     rowsFiltered.push(header.join(","));
 
     for (let f = 0; f < frameData.length; f++) {
-
       let sumX = 0, sumY = 0, count = 0;
       KP_DEF.forEach(def => {
         const x = filteredMap[def.name].x[f];
@@ -1243,7 +1265,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
 
       function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
 
-      const timeSec = f / fpsValue;
+      const timeSec = f / fps;
 
       const row = [
         (f + 1).toString(),
@@ -1270,20 +1292,16 @@ function runSaveProcess(saveRaw, saveFiltered) {
         fmt(filteredMap["L-Knee"].x[f]), fmt(filteredMap["L-Knee"].y[f]),
 
         fmt(filteredMap["R-Ankle"].x[f]), fmt(filteredMap["R-Ankle"].y[f]),
-        fmt(filteredMap["L-Ankle"].x[f]), fmt(filteredMap["L-Ankle"].y[f])
-      ];
+        fmt(filteredMap["L-Ankle"].x[f]), fmt(filteredMap["L-Ankle"].y[f]),
 
-      const ev = eventLogs.find(e => e.frame === f);
-      row.push(ev ? ev.label : "");
+        (eventLogs.find(e => e.frame === f)?.label || "")
+      ];
 
       rowsFiltered.push(row.join(","));
     }
 
     const cfRow = [];
-    cfRow.push("cf-freq");
-    cfRow.push("");
-    cfRow.push("");
-    cfRow.push("");
+    cfRow.push("cf-freq","","","");
 
     function pushCf(name) {
       cfRow.push(cfMap[name].x.toFixed(1));
@@ -1306,7 +1324,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
     pushCf("L-Ankle");
 
     cfRow.push("");
-
     rowsFiltered.push(cfRow.join(","));
 
     const csvContentFiltered = rowsFiltered.join("\r\n");
@@ -1329,11 +1346,12 @@ function runSaveProcess(saveRaw, saveFiltered) {
     alert(msg);
   }
 
-  /* ⑪ 終了処理（fps を再び聞くルーティンには戻らない） */
+  /* ⑪ 終了処理 */
   const next = confirm("Proceed New Analysis?\nCancel = Close Program");
   if (next) location.reload();
   else window.close();
 }
+
 
 /* ★★★ ここに貼る（script の中） ★★★ */
 
