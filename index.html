@@ -14,12 +14,12 @@
   body { font-family: sans-serif; margin: 20px; }
   .canvas-container { position: relative; display: inline-block; }
 
-#canvas {
-  border: 1px solid #ccc;
-  width: auto;      /* ← 画像の本来の幅を維持 */
-  height: auto;     /* ← アスペクト比維持 */
-  max-width: none;  /* ← ブラウザ幅で縮小されるのを防ぐ */
-}
+  #canvas {
+    border: 1px solid #ccc;
+    width: auto;
+    height: auto;
+    max-width: none;
+  }
 
   #analysisButtons {
     position: absolute;
@@ -65,16 +65,16 @@
     position: relative;
   }
 
-  /* ★★★ Record Events の最終位置（ここだけ残す） ★★★ */
+  /* Record Events */
   .event-panel {
     position: absolute;
-    top: 12px;     /* ← Frame No. のすぐ下 */
+    top: 12px;
     left: 0;
     width: 260px;
     border: none;
     padding: 6px 10px 10px 10px;
     background: transparent;
-    pointer-events: auto; /* ← finishBtn を覆わない */
+    pointer-events: auto;
   }
 
   .event-panel h3 {
@@ -94,64 +94,40 @@
     gap: 8px;
     margin-top: 10px;
   }
+
+canvas {
+  display: block;
+}
+
 </style>
 
 </head>
 <body tabindex="0">
 
 <div id="titleBlock" style="margin-bottom:10px;">
-
   <div style="display:flex; align-items:flex-end; gap:8px;">
     <h2 style="margin:0; font-size:32px;">Motion COM Analyzer</h2>
     <span style="font-size:16px; font-style:italic; color:#555;">v1.0 Beta</span>
   </div>
 
-  <!-- ★ サブタイトルを ?mm 左へ（margin-left:??px） -->
   <div style="font-size:12px; color:#666; margin-top:-4px; margin-left:2px;">
     – Aiding the manual digitization of joint coordinates using Pose Estimation –
   </div>
-
 </div>
 
-
-
-
-
-
-
 <style>
-  #videoInput::-webkit-file-upload-text {
-    visibility: hidden;
-  }
-  #videoInput::file-selector-button {
-  }
-
-  #videoInput {
-    color: transparent;
-    width: 115px;
-    display: none; /* ← ここで非表示になっている */
-  }
-
-  #videoInput::file-selector-button {
-    color: black;
-  }
-
-  /* ★ 3つのボタンの高さを38pxにする（正しい対象に適用） */
-  #fileSelectBtn,
-  #startAnalysisBtn,
-  #finishBtn {
+  #videoInput::-webkit-file-upload-text { visibility: hidden; }
+  #videoInput { color: transparent; width: 115px; display: none; }
+  #fileSelectBtn, #startAnalysisBtn, #finishBtn {
     height: 36px;
     font-size: 16px;
   }
-
-  .event-memo {
-    width: 40%;
-  }
+  .event-memo { width: 40%; }
 </style>
 
 <div style="display: flex; align-items: center;">
-<button id="fileSelectBtn">Select a file</button>
-<input type="file" id="videoInput" style="display:none;">
+  <button id="fileSelectBtn">Select a file</button>
+  <input type="file" id="videoInput" style="display:none;">
 
   <div id="fileRow" style="margin-left: 8px; font-size: 14px;">
     <span id="fileName">Still no file selected.</span>
@@ -165,6 +141,15 @@
 
   <div class="canvas-container">
     <canvas id="canvas"></canvas>
+
+    <!-- ★ スクロールバー（任意フレーム移動）追加 ★ -->
+<div style="margin-top:0px; display:inline-block; line-height:0;">
+  <input type="range" id="frameSlider" min="0" max="0" step="0.01" value="0" style="width: 600px; margin:0;">
+</div>
+
+
+
+
 
     <div id="keyHint" style="margin-top: 10px; font-size: 16px; display: none;">
       Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame.
@@ -180,45 +165,38 @@
   <div style="position: relative;">
     <div id="frameDisplay">Frame No. <span id="frameNumber">0</span></div>
 
-<div class="event-panel">
-  <h3>Record Events</h3>
+    <div class="event-panel">
+      <h3>Record Events</h3>
 
-  <div class="event-row">
-    <button style="height: 30px; padding: 0 15px; font-size: 15px;">A</button>
-    <input class="event-memo">
-  </div>
+      <div class="event-row">
+        <button style="height: 30px; padding: 0 15px; font-size: 15px;">A</button>
+        <input class="event-memo">
+      </div>
 
-  <div class="event-row">
-    <button style="height: 30px; padding: 0 15px; font-size: 15px;">B</button>
-    <input class="event-memo">
-  </div>
+      <div class="event-row">
+        <button style="height: 30px; padding: 0 15px; font-size: 15px;">B</button>
+        <input class="event-memo">
+      </div>
 
-  <div class="event-row">
-    <button style="height: 30px; padding: 0 15px; font-size: 15px;">C</button>
-    <input class="event-memo">
-  </div>
+      <div class="event-row">
+        <button style="height: 30px; padding: 0 15px; font-size: 15px;">C</button>
+        <input class="event-memo">
+      </div>
 
-  <div class="event-row">
-    <button style="height: 30px; padding: 0 15px; font-size: 15px;">D</button>
-    <input class="event-memo">
-  </div>
+      <div class="event-row">
+        <button style="height: 30px; padding: 0 15px; font-size: 15px;">D</button>
+        <input class="event-memo">
+      </div>
 
-</div>
+    </div>
   </div>
 
 </div>
 
 <style>
-/* ★ 下の CSS は event-panel の位置を上書きしないように調整済み ★ */
-.event-panel h3 {
-  margin-bottom: 6px;
-}
-
-.event-row {
-  margin-top: 4px;
-}
+  .event-panel h3 { margin-bottom: 6px; }
+  .event-row { margin-top: 4px; }
 </style>
-
 
 <script>
 
@@ -245,6 +223,9 @@ const fileNameSpan = document.getElementById("fileName");
 const frameNumberSpan = document.getElementById("frameNumber");
 
 const startAnalysisBtn = document.getElementById("startAnalysisBtn");
+
+/* ★★★ スクロールバー取得 ★★★ */
+const frameSlider = document.getElementById("frameSlider");
 
 let currentFrame = 0;
 let totalFrames = 0;
@@ -304,23 +285,27 @@ videoInput.addEventListener("change", (e) => {
   message.textContent = "Movie loading...";
 });
 
-// メタデータ読み込み完了時
+// メタデータ読み込み完了時（1つ目）
 video.addEventListener("loadedmetadata", () => {
 
   /* ★ fps はキャリブレーション後に決まるので、
         ここでは totalFrames を確定しない ★ */
 
   resizeCanvasToFit();
+
+  /* ★★★ スクロールバー初期化 ★★★ */
+  frameSlider.min = 0;
+  frameSlider.max = video.duration;
+  frameSlider.value = 0;
 });
 
-// 最初のフレームが描ける状態になったら描画
+// メタデータ読み込み完了時（2つ目）
 video.addEventListener("loadedmetadata", () => {
   drawCurrentFrame();
   redrawAll();
   message.textContent = "Horizontal Adjustment: Click the first point.";
   mode = "horizontal";
 });
-
 
 /* ================================
    resizeCanvasToFit（外に1つだけ）
@@ -342,6 +327,10 @@ function resizeCanvasToFit() {
 
   canvas.style.height = (video.videoHeight * scale) + "px";
   canvas.style.width  = (video.videoWidth  * scale) + "px";
+
+  // ★ ここに追加
+  frameSlider.style.width = canvas.style.width;
+
 }
 
 /* ================================
@@ -573,6 +562,7 @@ function drawCurrentFrame() {
   ctx.drawImage(video, -w / 2, -h / 2, w, h);
   ctx.restore();
 }
+
 /* ================================
    再描画
 ================================ */
@@ -593,10 +583,8 @@ function redrawAll() {
   const frameLabel = document.getElementById("frameNumber");
 
   if (mode === "analysis") {
-    // 解析中だけ Frame No. を表示（1 始まり）
     frameLabel.textContent = currentFrame + 1;
   } else {
-    // 解析前は常に "–"
     frameLabel.textContent = "–";
   }
 }
@@ -733,7 +721,7 @@ canvas.addEventListener("click", (e) => {
           if (n === 90) return 90.00;
           if (n === 120) return 119.88;
           if (n === 240) return 239.76;
-          return n; // custom real fps
+          return n;
         }
 
         let fpsNum = 30;
@@ -752,10 +740,8 @@ canvas.addEventListener("click", (e) => {
           }
         }
 
-        /* 実 fps に変換 */
         fps = toActualFPS(fpsNum);
 
-        /* fps に基づいて内部値を再計算 */
         frameDuration = 1 / fps;
         totalFrames = Math.floor(video.duration * fps);
 
@@ -769,6 +755,7 @@ canvas.addEventListener("click", (e) => {
     }
   }
 });
+
 /* ================================
    Record Events（A〜D）
 ================================ */
@@ -778,7 +765,7 @@ document.querySelectorAll(".event-row").forEach(row => {
 
   btn.addEventListener("click", () => {
     if (mode !== "analysis") {
-      alert("解析中のみイベントを記録できます");
+      alert("Events can only be recorded during analysis.");
       return;
     }
 
@@ -794,6 +781,7 @@ document.querySelectorAll(".event-row").forEach(row => {
     btn.blur();
   });
 });
+
 /* ================================
    ドラッグ修正（★修正版★）
 ================================ */
@@ -817,11 +805,9 @@ canvas.addEventListener("mousemove", (e) => {
 
   const { x, y } = getCanvasCoordinates(e);
 
-  // 座標を更新
   joints[draggingIndex].x = x;
   joints[draggingIndex].y = y;
 
-  // 手動修正したので estimated = false にする
   joints[draggingIndex].estimated = false;
 
   updateCOM();
@@ -829,19 +815,15 @@ canvas.addEventListener("mousemove", (e) => {
 });
 
 canvas.addEventListener("mouseup", () => {
-  // ドラッグ終了
   if (draggingIndex !== null && mode === "analysis") {
-    // ★★★ ここが今回の修正の核心 ★★★
-    // 修正後の joints を frameData に反映する
     frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
   }
 
   draggingIndex = null;
 });
 
-
 /* ================================
-   解析開始ボタン
+   解析開始ボタン（★開始フレーム修正済み★）
 ================================ */
 startAnalysisBtn.addEventListener("click", () => {
   if (mode !== "ready") {
@@ -849,7 +831,9 @@ startAnalysisBtn.addEventListener("click", () => {
     return;
   }
 
-  currentFrame = 0;
+  /* ★★★ スクロールバーで移動した位置から解析開始 ★★★ */
+  currentFrame = Math.round(video.currentTime * fps);
+
   mode = "analysis";
   message.textContent = "Analyzing...";
 
@@ -910,6 +894,31 @@ if (prevFrameBtn) {
 ================================ */
 window.addEventListener("resize", resizeCanvasToFit);
 
+/* ================================
+   スクロールバー操作 → 任意フレーム移動
+================================ */
+frameSlider.addEventListener("input", async () => {
+  // ★ 解析中はスクロール禁止（安全）
+  if (mode === "analysis") return;
+
+  // ★ スライダーの値（秒）を取得
+  const t = parseFloat(frameSlider.value);
+  video.currentTime = t;
+
+  // ★ seeked を待つ（確実にフレームを更新）
+  await new Promise(resolve => {
+    const handler = () => {
+      video.removeEventListener("seeked", handler);
+      resolve();
+    };
+    video.addEventListener("seeked", handler);
+  });
+
+  // ★ フレーム描画
+  drawCurrentFrame();
+  redrawAll();
+});
+
 
 /* ============================================================
    SECTION: Butterworth 2次フィルタ ＋ Winter 残差分析
@@ -969,7 +978,7 @@ function residualRMS(orig, filt) {
   return Math.sqrt(sum / count);
 }
 
-/* 線形回帰（x[], y[]）→ {a, b} */
+/* 線形回帰 */
 function linearRegression(xs, ys) {
   const n = xs.length;
   if (n === 0) return { a: 0, b: 0 };
@@ -991,11 +1000,10 @@ function linearRegression(xs, ys) {
   return { a, b };
 }
 
-/* Winter 法：残差分析で最適 fc を決定し、フィルタ後系列を返す */
+/* Winter 法 */
 function winterResidualAnalysis(orig, fs) {
   const candidates = [4, 6, 8, 10, 12, 14, 16, 18, 20];
 
-  // 欠損を埋めた系列（簡易：直前値保持）
   const filled = [];
   let last = 0;
   for (let i = 0; i < orig.length; i++) {
@@ -1018,12 +1026,10 @@ function winterResidualAnalysis(orig, fs) {
     filtList.push(filt);
   }
 
-  // 低周波側（4,6,8 Hz）の直線近似
   const lowXs = candidates.slice(0, 3);
   const lowYs = rmsList.slice(0, 3);
   const { a, b } = linearRegression(lowXs, lowYs);
 
-  // 直線と残差曲線の差が最小の fc を膝とみなす
   let bestIdx = 0;
   let bestDiff = Infinity;
   for (let i = 0; i < candidates.length; i++) {
@@ -1042,27 +1048,17 @@ function winterResidualAnalysis(orig, fs) {
   return { fc: bestFc, filtered: bestFilt };
 }
 
-
-
-
-
-
 /* ============================================================
-   保存処理本体（Raw / Filtered / Both）【fpsValue 廃止版】
+   保存処理本体（Raw / Filtered / Both）
 ============================================================ */
 function runSaveProcess(saveRaw, saveFiltered) {
 
-  /* ★★★ fpsValue は廃止。fps をそのまま使用 ★★★ */
-  // fps はキャリブレーション後に決定済み
-
-  /* ② 座標変換準備 */
   let baselineY = 0;
   if (horizontalPoints.length >= 2) {
     baselineY = (horizontalPoints[0].y + horizontalPoints[1].y) / 2;
   }
   const scale = calibrationScale || 1.0;
 
-  /* ③ CSV ヘッダ */
   const header = [
     "Frame No.","Time (s)","COM-X (m)","COM-Y (m)",
     "R-Ear-X (m)","R-Ear-Y (m)","L-Ear-X (m)","L-Ear-Y (m)",
@@ -1078,7 +1074,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
   const rowsRaw = [];
   rowsRaw.push(header.join(","));
 
-  /* ④ 生データ CSV 用の行生成 ＋ seriesMap（フィルタ用） */
   const seriesMap = {};
   KP_DEF.forEach(def => {
     seriesMap[def.name] = { x: [], y: [] };
@@ -1134,7 +1129,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
 
     function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
 
-    /* ★★★ 時間計算は fps に統一 ★★★ */
     const timeSec = f / fps;
 
     const row = [
@@ -1170,7 +1164,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
     rowsRaw.push(row.join(","));
   }
 
-  /* ⑤ raw CSV 保存 */
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -1194,7 +1187,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
     URL.revokeObjectURL(urlRaw);
   }
 
-  /* ⑥ 欠損チェック */
   let hasMissing = false;
   KP_DEF.forEach(def => {
     const arrX = seriesMap[def.name].x;
@@ -1204,10 +1196,8 @@ function runSaveProcess(saveRaw, saveFiltered) {
     }
   });
 
-  /* ⑦ Frame 数チェック */
   const tooFewFrames = frameData.length < 20;
 
-  /* ⑧ Filtered 保存可否 */
   let allowFiltered = saveFiltered;
   let msg = "";
 
@@ -1222,7 +1212,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
     msg = "Only the raw-data was saved because the analysis included unextracted coordinates. Also, the number of frames is too less (no less than 20).";
   }
 
-  /* ⑨ filtered 保存 */
   let filteredMap = {};
   let cfMap = {};
 
@@ -1232,7 +1221,6 @@ function runSaveProcess(saveRaw, saveFiltered) {
       const sx = seriesMap[name].x;
       const sy = seriesMap[name].y;
 
-      /* ★★★ Winter 法も fps に統一 ★★★ */
       const resX = winterResidualAnalysis(sx, fps);
       const resY = winterResidualAnalysis(sy, fps);
 
@@ -1339,31 +1327,29 @@ function runSaveProcess(saveRaw, saveFiltered) {
     URL.revokeObjectURL(urlFiltered);
   }
 
-  /* ⑩ 完了メッセージ */
   if (saveRaw && allowFiltered) {
     alert("Raw- and filtered data were saved completely.");
   } else if (saveRaw && !allowFiltered && msg) {
     alert(msg);
   }
 
-  /* ⑪ 終了処理 */
   const next = confirm("Proceed New Analysis?\nCancel = Close Program");
   if (next) location.reload();
   else window.close();
 }
 
-
-/* ★★★ ここに貼る（script の中） ★★★ */
-
+/* ============================================================
+   Finish ボタン → Save パネル表示
+============================================================ */
 document.addEventListener("DOMContentLoaded", () => {
 
   // ★ Finish ボタン → パネル表示
-document.getElementById("finishBtn").addEventListener("click", () => {
+  document.getElementById("finishBtn").addEventListener("click", () => {
 
     // ★ ① データが 1 フレームも無い場合は保存させない
     if (!frameData || frameData.length === 0) {
-        alert("No data available for saving.");
-        return;
+      alert("No data available for saving.");
+      return;
     }
 
     // ★ ② データがある場合のみ、保存するかどうかを聞く
@@ -1394,10 +1380,10 @@ document.getElementById("finishBtn").addEventListener("click", () => {
   });
 
 });
+</script>
 
-</script>   <!-- ← script はここで閉じる（1 回だけ） -->
-
-<div id="saveOptionsPanel" 
+<!-- ★ Save Options Panel（HTML） -->
+<div id="saveOptionsPanel"
      style="display:none; position:fixed; top:30%; left:50%; transform:translateX(-50%);
             background:white; border:1px solid #ccc; padding:20px; z-index:999999;">
   <h3>Select data to save</h3>
@@ -1411,3 +1397,5 @@ document.getElementById("finishBtn").addEventListener("click", () => {
 
 </body>
 </html>
+
+
