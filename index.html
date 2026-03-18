@@ -206,7 +206,7 @@ canvas {
     const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
     if (!lastShown || now - lastShown > THIRTY_DAYS) {
-      alert("CAUTION: This tool is protected by copyright (©2026 A. Azuma. All Rights Reserved). Unauthorized downloading, copying, or redistribution is prohibited.");
+      alert("CAUTION: This tool is protected by copyright (©2026 A. Azuma. All Rights Reserved). Unauthorized downloading, copying, or redistribution is prohibited.\n注意：本ツールは著作権により保護されています (©2026 A. Azuma. All Rights Reserved)．無断でのダウンロード，複製，再配布を禁じます．");
       localStorage.setItem("warningLastShown", now);
     }
   });
