@@ -200,6 +200,18 @@ canvas {
 
 <script>
 
+  window.addEventListener("load", () => {
+    const lastShown = localStorage.getItem("warningLastShown");
+    const now = Date.now();
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+    if (!lastShown || now - lastShown > THIRTY_DAYS) {
+      alert("CAUTION: This tool is protected by copyright. \nUnauthorized downloading, copying, or redistribution is prohibited.");
+      localStorage.setItem("warningLastShown", now);
+    }
+  });
+
+
 /* ================================
    要素・変数（Record Events 統合版）
 ================================ */
