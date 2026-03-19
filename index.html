@@ -274,8 +274,8 @@ const KP_DEF = [
   { id: 7,  name: "L-Elbow",    side: "L" },
   { id:10,  name: "R-Wrist",    side: "R" },
   { id: 9,  name: "L-Wrist",    side: "L" },
-  { id:12,  name: "R-GT",       side: "R" },
-  { id:11,  name: "L-GT",       side: "L" },
+  { id:12,  name: "R-Hip",       side: "R" },
+  { id:11,  name: "L-Hip",       side: "L" },
   { id:14,  name: "R-Knee",     side: "R" },
   { id:13,  name: "L-Knee",     side: "L" },
   { id:16,  name: "R-Ankle",    side: "R" },
@@ -1077,7 +1077,7 @@ function runSaveProcess(saveRaw, saveFiltered) {
     "R-Shoulder-X (m)","R-Shoulder-Y (m)","L-Shoulder-X (m)","L-Shoulder-Y (m)",
     "R-Elbow-X (m)","R-Elbow-Y (m)","L-Elbow-X (m)","L-Elbow-Y (m)",
     "R-Wrist-X (m)","R-Wrist-Y (m)","L-Wrist-X (m)","L-Wrist-Y (m)",
-    "R-GT-X (m)","R-GT-Y (m)","L-GT-X (m)","L-GT-Y (m)",
+    "R-Hip-X (m)","R-Hip-Y (m)","L-Hip-X (m)","L-Hip-Y (m)",
     "R-Knee-X (m)","R-Knee-Y (m)","L-Knee-X (m)","L-Knee-Y (m)",
     "R-Ankle-X (m)","R-Ankle-Y (m)","L-Ankle-X (m)","L-Ankle-Y (m)",
     "Event"
@@ -1161,8 +1161,8 @@ function runSaveProcess(saveRaw, saveFiltered) {
       fmt(jointConv["R-Wrist"].x), fmt(jointConv["R-Wrist"].y),
       fmt(jointConv["L-Wrist"].x), fmt(jointConv["L-Wrist"].y),
 
-      fmt(jointConv["R-GT"].x), fmt(jointConv["R-GT"].y),
-      fmt(jointConv["L-GT"].x), fmt(jointConv["L-GT"].y),
+      fmt(jointConv["R-Hip"].x), fmt(jointConv["R-Hip"].y),
+      fmt(jointConv["L-Hip"].x), fmt(jointConv["L-Hip"].y),
 
       fmt(jointConv["R-Knee"].x), fmt(jointConv["R-Knee"].y),
       fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
@@ -1285,8 +1285,8 @@ function runSaveProcess(saveRaw, saveFiltered) {
         fmt(filteredMap["R-Wrist"].x[f]), fmt(filteredMap["R-Wrist"].y[f]),
         fmt(filteredMap["L-Wrist"].x[f]), fmt(filteredMap["L-Wrist"].y[f]),
 
-        fmt(filteredMap["R-GT"].x[f]), fmt(filteredMap["R-GT"].y[f]),
-        fmt(filteredMap["L-GT"].x[f]), fmt(filteredMap["L-GT"].y[f]),
+        fmt(filteredMap["R-Hip"].x[f]), fmt(filteredMap["R-Hip"].y[f]),
+        fmt(filteredMap["L-Hip"].x[f]), fmt(filteredMap["L-Hip"].y[f]),
 
         fmt(filteredMap["R-Knee"].x[f]), fmt(filteredMap["R-Knee"].y[f]),
         fmt(filteredMap["L-Knee"].x[f]), fmt(filteredMap["L-Knee"].y[f]),
@@ -1316,8 +1316,8 @@ function runSaveProcess(saveRaw, saveFiltered) {
     pushCf("L-Elbow");
     pushCf("R-Wrist");
     pushCf("L-Wrist");
-    pushCf("R-GT");
-    pushCf("L-GT");
+    pushCf("R-Hip");
+    pushCf("L-Hip");
     pushCf("R-Knee");
     pushCf("L-Knee");
     pushCf("R-Ankle");
