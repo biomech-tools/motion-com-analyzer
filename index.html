@@ -1381,8 +1381,8 @@ for (let f = 0; f < frameData.length; f++) {
 
   const timeSec = f / fps;
 
-  /* ★ 最初と最後の5サンプルはフィルタ結果を空欄にする ★ */
-  const blank = (f < 5 || f >= frameData.length - 5);
+  /* ★ 最初と最後の4サンプルはフィルタ結果を空欄にする ★ */
+  const blank = (f < 4 || f >= frameData.length - 4);
 
 
   const row = [
