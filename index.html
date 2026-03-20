@@ -147,6 +147,9 @@ canvas {
   <input type="range" id="frameSlider" min="0" max="0" step="0.01" value="0" style="width: 600px; margin:0;">
 </div>
 
+<!-- ★ ここが新しく追加するメッセージ表示領域 ★ -->
+<div id="instructionMessage" style="margin-top:6px; font-size:14px; color:black;"></div>
+
 
 
 
@@ -282,6 +285,11 @@ const KP_DEF = [
   { id:15,  name: "L-Ankle",    side: "L" }
 ];
 
+function showInstruction(html) {
+  const box = document.getElementById("instructionMessage");
+  if (box) box.innerHTML = html;
+}
+
 /* ================================
    動画読み込み・初期描画（fps 未確定版）
 ================================ */
@@ -297,24 +305,30 @@ videoInput.addEventListener("change", (e) => {
   message.textContent = "Movie loading...";
 });
 
-// メタデータ読み込み完了時（1つ目）
+// メタデータ読み込み完了時（統合版）
 video.addEventListener("loadedmetadata", () => {
 
   /* ★ fps はキャリブレーション後に決まるので、
         ここでは totalFrames を確定しない ★ */
 
+  // キャンバスサイズ調整
   resizeCanvasToFit();
 
   /* ★★★ スクロールバー初期化 ★★★ */
   frameSlider.min = 0;
   frameSlider.max = video.duration;
   frameSlider.value = 0;
-});
 
-// メタデータ読み込み完了時（2つ目）
-video.addEventListener("loadedmetadata", () => {
+  // 最初のフレームを描画
   drawCurrentFrame();
   redrawAll();
+
+  /* ★★★ ここでメッセージを表示（scroll bar だけ赤文字） ★★★ */
+  showInstruction(
+    `Use the <span style="color:red;">scroll bar</span> to move forward or backward through the movie frames.`
+  );
+
+  // ★ 水平補正モードに入る
   message.textContent = "Horizontal Adjustment: Click the first point.";
   mode = "horizontal";
 });
@@ -672,6 +686,9 @@ canvas.addEventListener("click", (e) => {
      水平補正
   ------------------------------ */
   if (mode === "horizontal") {
+
+    if (horizontalPoints.length >= 2) return;
+
     horizontalPoints.push({ x, y });
 
     if (horizontalPoints.length === 1) {
@@ -697,6 +714,9 @@ canvas.addEventListener("click", (e) => {
      キャリブレーション
   ------------------------------ */
   if (mode === "calibration") {
+
+    if (calibrationPoints.length >= 2) return;
+
     calibrationPoints.push({ x, y });
 
     if (calibrationPoints.length === 1) {
@@ -720,7 +740,7 @@ canvas.addEventListener("click", (e) => {
         calibrationScale = realDist / pixelDist;
 
         /* -----------------------------------------
-           ★★★ ここで fps を選択（安全な唯一の場所）★★★
+           ★★★ FPS 選択（安全な唯一の場所）★★★
         ----------------------------------------- */
         let fpsChoice = prompt(
           "Select FPS:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)",
@@ -757,8 +777,14 @@ canvas.addEventListener("click", (e) => {
         frameDuration = 1 / fps;
         totalFrames = Math.floor(video.duration * fps);
 
+        currentFrame = Math.round(video.currentTime * fps);
         mode = "ready";
         message.textContent = "Analysis Ready: Please press the Start Analysis button.";
+
+        /* ★★★ FPS入力後のメッセージ（scroll bar + arrow keys）★★★ */
+        showInstruction(
+          `Use the <span style="color:red;">scroll bar</span> or the <span style="color:red;">arrow keys (right & left)</span> to move forward or backward through the movie frames.`
+        );
 
         redrawAll();
       }, 0);
@@ -835,6 +861,7 @@ canvas.addEventListener("mouseup", () => {
 });
 
 /* ================================
+/* ================================
    解析開始ボタン（★開始フレーム修正済み★）
 ================================ */
 startAnalysisBtn.addEventListener("click", () => {
@@ -849,27 +876,61 @@ startAnalysisBtn.addEventListener("click", () => {
   mode = "analysis";
   message.textContent = "Analyzing...";
 
-  startAnalysisBtn.style.display = "none";
+  /* ★ FPS入力後のメッセージを完全に消す ★ */
+  showInstruction("");
 
+  /* ★ keyHint の中身をここでセットする（HTML側には書かない） ★ */
+  document.getElementById("keyHint").innerHTML =
+    `Press <span style="color:red;">Enter</span> to advance one frame. 
+     Press <span style="color:red;">Esc</span> to rewind one frame.`;
+
+  /* ★ keyHint を表示する ★ */
   document.getElementById("keyHint").style.display = "block";
+
+  /* ★ Start Analysis ボタンを消す */
+  startAnalysisBtn.style.display = "none";
 
   processNextFrame();
 });
 
+
 /* ================================
-   ESC / Enter キー入力
+   キー入力（Enter / Escape / ← →）
 ================================ */
 document.body.setAttribute("tabindex", "0");
 document.body.focus();
 
 document.body.addEventListener("keydown", async (e) => {
-  if (e.key === "Enter" && mode === "analysis") {
+
+  /* -----------------------------------------
+     ★ まず最初にブラウザの横スクロールを完全に停止
+  ----------------------------------------- */
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    e.preventDefault();
+  }
+
+  /* -----------------------------------------
+     ★ 水平補正・キャリブレーション中は
+        すべてのキー操作を無効化
+  ----------------------------------------- */
+  if (mode !== "ready" && mode !== "analysis") return;
+
+  /* -----------------------------------------
+     ★ Enter：次のフレーム（解析中のみ）
+  ----------------------------------------- */
+  if (e.key === "Enter") {
+    if (mode !== "analysis") return;
+
     currentFrame++;
     processNextFrame();
     return;
   }
 
-  if (e.key === "Escape" && mode === "analysis") {
+  /* -----------------------------------------
+     ★ Escape：前のフレーム（解析中のみ）
+  ----------------------------------------- */
+  if (e.key === "Escape") {
+    if (mode !== "analysis") return;
     if (currentFrame <= 0) return;
 
     currentFrame--;
@@ -878,6 +939,58 @@ document.body.addEventListener("keydown", async (e) => {
     await runPoseEstimationOnCurrentFrame();
     redrawAll();
     frameNumberSpan.textContent = currentFrame;
+
+    /* ★ C 対応：スクロールバー同期 */
+    frameSlider.value = currentFrame * frameDuration;
+
+    return;
+  }
+
+  /* -----------------------------------------
+     ★ →：1フレーム進む（ready / analysis）
+  ----------------------------------------- */
+  if (e.key === "ArrowRight") {
+    if (currentFrame >= totalFrames - 1) return;
+
+    currentFrame++;
+    await seekToFrame(currentFrame);
+    drawCurrentFrame();
+
+    if (mode === "analysis") {
+      await runPoseEstimationOnCurrentFrame();
+      frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+    }
+
+    redrawAll();
+    frameNumberSpan.textContent = currentFrame;
+
+    /* ★ C 対応：スクロールバー同期 */
+    frameSlider.value = currentFrame * frameDuration;
+
+    return;
+  }
+
+  /* -----------------------------------------
+     ★ ←：1フレーム戻る（ready / analysis）
+  ----------------------------------------- */
+  if (e.key === "ArrowLeft") {
+    if (currentFrame <= 0) return;
+
+    currentFrame--;
+    await seekToFrame(currentFrame);
+    drawCurrentFrame();
+
+    if (mode === "analysis") {
+      await runPoseEstimationOnCurrentFrame();
+      frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+    }
+
+    redrawAll();
+    frameNumberSpan.textContent = currentFrame;
+
+    /* ★ C 対応：スクロールバー同期 */
+    frameSlider.value = currentFrame * frameDuration;
+
     return;
   }
 });
