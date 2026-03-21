@@ -643,40 +643,36 @@
           const dy = calibrationPoints[1].y - calibrationPoints[0].y;
           const pixelDist = Math.hypot(dx, dy);
 
-let realDist = prompt(
-  "Input the actual distance (a positive number, meters) between the two selected points.\nCancel restarts horizontal adjustment and calibration.",
-  "1.0"
-);
+          let realDist = prompt(
+            "Input the actual distance (a positive number, meters) between the two selected points.\nCancel restarts horizontal adjustment and calibration.",
+            "1.0"
+          );
 
-// ★ Cancel が押された場合の処理
-if (realDist === null) {
-    // --- 全リセット ---
-    horizontalPoints = [];
-    calibrationPoints = [];
-    rotationAngle = 0;
-    calibrationScale = 1;
+          // ★ Cancel の場合は完全リセット
+          if (realDist === null) {
+            horizontalPoints = [];
+            calibrationPoints = [];
+            rotationAngle = 0;
+            calibrationScale = 1;
 
-    mode = "horizontal";
+            mode = "horizontal";
 
-    message.textContent = "Horizontal Adjustment: Click the first point.";
-    showInstruction("Use the scroll bar to move forward or backward through the movie frames.");
+            message.textContent = "Horizontal Adjustment: Click the first point.";
+            showInstruction("Use the scroll bar to move forward or backward through the movie frames.");
 
-    redrawAll();
-    return;  // ここで処理終了
-}
+            redrawAll();
+            return;
+          }
 
-// OK が押された場合
-realDist = parseFloat(realDist);
-if (!realDist || realDist <= 0) realDist = 1.0;
+          realDist = parseFloat(realDist);
+          if (!realDist || realDist <= 0) realDist = 1.0;
 
           calibrationScale = realDist / pixelDist;
 
-let fpsChoice = prompt(
-  "Input fps:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)\nCancel means default (30 fps, but actually runs at 29.97 fps).",
-  "30"
-);
-
-
+          let fpsChoice = prompt(
+            "Input fps:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)\nCancel means default (30 fps, but actually runs at 29.97 fps).",
+            "30"
+          );
 
           function toActualFPS(n) {
             if (n === 30) return 29.97;
@@ -919,16 +915,24 @@ let fpsChoice = prompt(
     redrawAll();
   });
 
+  // ====== フィルタ関連 ======
+
   function butterworth2Coefficients(fs, fc) {
     const ita = 1 / Math.tan(Math.PI * fc / fs);
     const q = Math.SQRT2;
 
-    const b0 = 1 / (1 + q * ita + ita * ita);
-    const b1 = 2 * b0;
-    const b2 = b0;
+    let b0 = 1 / (1 + q * ita + ita * ita);
+    let b1 = 2 * b0;
+    let b2 = b0;
 
-    const a1 = 2 * (ita * ita - 1) * b0;
-    const a2 = (1 - q * ita + ita * ita) * b0;
+    let a1 = 2 * (ita * ita - 1) * b0;
+    let a2 = (1 - q * ita + ita * ita) * b0;
+
+    // DC ゲインを 1 に正規化
+    const gain = (b0 + b1 + b2) / (1 + a1 + a2);
+    b0 /= gain;
+    b1 /= gain;
+    b2 /= gain;
 
     return { b: [b0, b1, b2], a: [1, a1, a2] };
   }
@@ -990,19 +994,35 @@ let fpsChoice = prompt(
     return { a, b };
   }
 
-  function winterResidualAnalysis(orig, fs) {
-    const candidates = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+  // 欠損補完：先頭を最初の有効値で埋め、その後は前値補完
+  function fillMissing(orig) {
+    const filled = [...orig];
 
-    const filled = [];
-    let last = 0;
-    for (let i = 0; i < orig.length; i++) {
-      if (orig[i] == null) {
-        filled[i] = last;
-      } else {
-        filled[i] = orig[i];
-        last = orig[i];
-      }
+    let first = filled.find(v => v != null);
+    if (first == null) {
+      for (let i = 0; i < filled.length; i++) filled[i] = 0;
+      return filled;
     }
+
+    for (let i = 0; i < filled.length; i++) {
+      if (filled[i] == null) filled[i] = first;
+      else break;
+    }
+
+    for (let i = 1; i < filled.length; i++) {
+      if (filled[i] == null) filled[i] = filled[i - 1];
+    }
+
+    return filled;
+  }
+
+  function winterResidualAnalysis(orig, fs) {
+    const nyquist = fs / 2;
+    const maxFc = Math.min(12, nyquist * 0.8);
+    const baseCandidates = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+    const candidates = baseCandidates.filter(fc => fc < maxFc);
+
+    const filled = fillMissing(orig);
 
     const rmsList = [];
     const filtList = [];
