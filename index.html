@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Motion COM Analyzer</title>
@@ -643,15 +643,40 @@
           const dy = calibrationPoints[1].y - calibrationPoints[0].y;
           const pixelDist = Math.hypot(dx, dy);
 
-          let realDist = parseFloat(prompt("Input the actual distance between two points (m).", "1.0"));
-          if (!realDist || realDist <= 0) realDist = 1.0;
+let realDist = prompt(
+  "Input the actual distance between the two selected points (meters).\nPlease enter a positive number.",
+  "1.0"
+);
+
+// ★ Cancel が押された場合の処理
+if (realDist === null) {
+    // --- 全リセット ---
+    horizontalPoints = [];
+    calibrationPoints = [];
+    rotationAngle = 0;
+    calibrationScale = 1;
+
+    mode = "horizontal";
+
+    message.textContent = "Horizontal Adjustment: Click the first point.";
+    showInstruction("Use the scroll bar to move forward or backward through the movie frames.");
+
+    redrawAll();
+    return;  // ここで処理終了
+}
+
+// OK が押された場合
+realDist = parseFloat(realDist);
+if (!realDist || realDist <= 0) realDist = 1.0;
 
           calibrationScale = realDist / pixelDist;
 
-          let fpsChoice = prompt(
-            "Select FPS:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)",
-            "30"
-          );
+let fpsChoice = prompt(
+  "Input fps:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)\nCancel means default (30 fps).",
+  "30"
+);
+
+
 
           function toActualFPS(n) {
             if (n === 30) return 29.97;
