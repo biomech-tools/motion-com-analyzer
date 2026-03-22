@@ -55,6 +55,7 @@
       border-radius: 4px;
       margin-bottom: 6px;
       width: fit-content;
+      white-space: nowrap;
     }
 
     .main-area {
@@ -154,7 +155,7 @@
   </div>
 
   <div style="position: relative;">
-    <div id="frameDisplay">Frame No. <span id="frameNumber">0</span></div>
+    <div id="frameDisplay">Frame No. <span id="frameNumber">-</span></div>
 
     <div class="event-panel">
       <h3>Record Events</h3>
@@ -598,7 +599,11 @@ function redrawAll() {
 
     frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
 
-    frameNumberSpan.textContent = currentFrame;
+if (mode === "analysis") {
+  frameNumberSpan.textContent = currentFrame + 1;
+} else {
+  frameNumberSpan.textContent = "–";
+}
   }
 
   /* ===== Part 1 End ===== */
@@ -788,9 +793,15 @@ function redrawAll() {
 
   /* ====== キー操作 ====== */
   document.body.addEventListener("keydown", async (e) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      e.preventDefault();
-    }
+if (
+  e.key === "ArrowRight" ||
+  e.key === "ArrowLeft"  ||
+  e.key === "ArrowUp"    ||   // ★ 追加
+  e.key === "ArrowDown"       // ★ 追加
+) {
+  e.preventDefault();
+}
+
 
     if (mode !== "ready" && mode !== "analysis") return;
 
@@ -811,14 +822,21 @@ function redrawAll() {
       drawCurrentFrame();
       await runPoseEstimationOnCurrentFrame();
       redrawAll();
-      frameNumberSpan.textContent = currentFrame;
+if (mode === "analysis") {
+  frameNumberSpan.textContent = currentFrame + 1;
+} else {
+  frameNumberSpan.textContent = "–";
+}
 
       frameSlider.value = currentFrame * frameDuration;
       return;
     }
 
-    if (e.key === "ArrowRight") {
-      if (currentFrame >= totalFrames - 1) return;
+if (e.key === "ArrowRight") {
+  if (mode !== "ready") return;   // ★ 追加：ready 以外は無効
+
+  if (currentFrame >= totalFrames - 1) return;
+
 
       currentFrame++;
       await seekToFrame(currentFrame);
@@ -830,30 +848,28 @@ function redrawAll() {
       }
 
       redrawAll();
-      frameNumberSpan.textContent = currentFrame;
+if (mode === "analysis") {
+  frameNumberSpan.textContent = currentFrame + 1;
+} else {
+  frameNumberSpan.textContent = "–";
+}
 
       frameSlider.value = currentFrame * frameDuration;
       return;
     }
 
-    if (e.key === "ArrowLeft") {
-      if (currentFrame <= 0) return;
+if (e.key === "ArrowLeft") {
+  if (mode !== "ready") return;   // ★ ready 以外は無効
 
-      currentFrame--;
-      await seekToFrame(currentFrame);
-      drawCurrentFrame();
+  if (currentFrame <= 0) return;
 
-      if (mode === "analysis") {
-        await runPoseEstimationOnCurrentFrame();
-        frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
-      }
-
-      redrawAll();
-      frameNumberSpan.textContent = currentFrame;
-
-      frameSlider.value = currentFrame * frameDuration;
-      return;
-    }
+  currentFrame--;
+  await seekToFrame(currentFrame);
+  drawCurrentFrame();
+  redrawAll();
+  frameSlider.value = currentFrame * frameDuration;
+  return;
+}
   });
 
   /* ====== スライダー ====== */
