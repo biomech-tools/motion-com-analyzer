@@ -1248,8 +1248,9 @@
       cfRow.push("cf-freq","","","");
 
       function pushCf(name) {
-        cfRow.push(cfMap[name].x.toFixed(1));
-        cfRow.push(cfMap[name].y.toFixed(1));
+cfRow.push(Math.round(cfMap[name].x));
+cfRow.push(Math.round(cfMap[name].y));
+
       }
 
       pushCf("R-Ear");
