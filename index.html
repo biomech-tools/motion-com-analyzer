@@ -1143,39 +1143,43 @@ function drawStartupLogo() {
         seriesMap[def.name].y.push(p.y);
       });
 
-      function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
+function fmt(v) {
+  return (v == null) ? null : Number(v.toFixed(3));
+}
+
 
       const timeSec = f / fps;
 
-      const row = [
-        (f + 1).toString(),
-        timeSec.toFixed(3),
-        hasEstimated ? "" : fmt(comX),
-        hasEstimated ? "" : fmt(comY),
+const row = [
+  f + 1,                                 // 数値のまま
+  Number(timeSec.toFixed(3)),            // 数値に戻す
+  hasEstimated ? null : fmt(comX),       // "" ではなく null の方が安全
+  hasEstimated ? null : fmt(comY),
 
-        fmt(jointConv["R-Ear"].x), fmt(jointConv["R-Ear"].y),
-        fmt(jointConv["L-Ear"].x), fmt(jointConv["L-Ear"].y),
+  fmt(jointConv["R-Ear"].x), fmt(jointConv["R-Ear"].y),
+  fmt(jointConv["L-Ear"].x), fmt(jointConv["L-Ear"].y),
 
-        fmt(jointConv["R-Shoulder"].x), fmt(jointConv["R-Shoulder"].y),
-        fmt(jointConv["L-Shoulder"].x), fmt(jointConv["L-Shoulder"].y),
+  fmt(jointConv["R-Shoulder"].x), fmt(jointConv["R-Shoulder"].y),
+  fmt(jointConv["L-Shoulder"].x), fmt(jointConv["L-Shoulder"].y),
 
-        fmt(jointConv["R-Elbow"].x), fmt(jointConv["R-Elbow"].y),
-        fmt(jointConv["L-Elbow"].x), fmt(jointConv["L-Elbow"].y),
+  fmt(jointConv["R-Elbow"].x), fmt(jointConv["R-Elbow"].y),
+  fmt(jointConv["L-Elbow"].x), fmt(jointConv["L-Elbow"].y),
 
-        fmt(jointConv["R-Wrist"].x), fmt(jointConv["R-Wrist"].y),
-        fmt(jointConv["L-Wrist"].x), fmt(jointConv["L-Wrist"].y),
+  fmt(jointConv["R-Wrist"].x), fmt(jointConv["R-Wrist"].y),
+  fmt(jointConv["L-Wrist"].x), fmt(jointConv["L-Wrist"].y),
 
-        fmt(jointConv["R-Hip"].x), fmt(jointConv["R-Hip"].y),
-        fmt(jointConv["L-Hip"].x), fmt(jointConv["L-Hip"].y),
+  fmt(jointConv["R-Hip"].x), fmt(jointConv["R-Hip"].y),
+  fmt(jointConv["L-Hip"].x), fmt(jointConv["L-Hip"].y),
 
-        fmt(jointConv["R-Knee"].x), fmt(jointConv["R-Knee"].y),
-        fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
+  fmt(jointConv["R-Knee"].x), fmt(jointConv["R-Knee"].y),
+  fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
 
-        fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
-        fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y),
+  fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
+  fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y),
 
-        (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
-      ];
+  (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
+];
+
 
       rowsRaw.push(row);
     }
@@ -1250,41 +1254,44 @@ function drawStartupLogo() {
         const comXf = (count > 0) ? (sumX / count) : null;
         const comYf = (count > 0) ? (sumY / count) : null;
 
-        function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
+function fmt(v) {
+  return (v == null) ? null : Number(v.toFixed(3));
+}
+
 
         const timeSec = f / fps;
         const blank = (f < 4 || f >= trimmedFrameData.length - 4);
 
-        const row = [
-          (f + 1).toString(),
-          timeSec.toFixed(3),
+const row = [
+  f + 1,                                   // 数値のまま
+  Number(timeSec.toFixed(3)),              // 数値に戻す
 
-          blank ? "" : fmt(comXf),
-          blank ? "" : fmt(comYf),
+  blank ? null : fmt(comXf),               // "" ではなく null
+  blank ? null : fmt(comYf),
 
-          blank ? "" : fmt(filteredMap["R-Ear"].x[f]), blank ? "" : fmt(filteredMap["R-Ear"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Ear"].x[f]), blank ? "" : fmt(filteredMap["L-Ear"].y[f]),
+  blank ? null : fmt(filteredMap["R-Ear"].x[f]), blank ? null : fmt(filteredMap["R-Ear"].y[f]),
+  blank ? null : fmt(filteredMap["L-Ear"].x[f]), blank ? null : fmt(filteredMap["L-Ear"].y[f]),
 
-          blank ? "" : fmt(filteredMap["R-Shoulder"].x[f]), blank ? "" : fmt(filteredMap["R-Shoulder"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Shoulder"].x[f]), blank ? "" : fmt(filteredMap["L-Shoulder"].y[f]),
+  blank ? null : fmt(filteredMap["R-Shoulder"].x[f]), blank ? null : fmt(filteredMap["R-Shoulder"].y[f]),
+  blank ? null : fmt(filteredMap["L-Shoulder"].x[f]), blank ? null : fmt(filteredMap["L-Shoulder"].y[f]),
 
-          blank ? "" : fmt(filteredMap["R-Elbow"].x[f]), blank ? "" : fmt(filteredMap["R-Elbow"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Elbow"].x[f]), blank ? "" : fmt(filteredMap["L-Elbow"].y[f]),
+  blank ? null : fmt(filteredMap["R-Elbow"].x[f]), blank ? null : fmt(filteredMap["R-Elbow"].y[f]),
+  blank ? null : fmt(filteredMap["L-Elbow"].x[f]), blank ? null : fmt(filteredMap["L-Elbow"].y[f]),
 
-          blank ? "" : fmt(filteredMap["R-Wrist"].x[f]), blank ? "" : fmt(filteredMap["R-Wrist"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Wrist"].x[f]), blank ? "" : fmt(filteredMap["L-Wrist"].y[f]),
+  blank ? null : fmt(filteredMap["R-Wrist"].x[f]), blank ? null : fmt(filteredMap["R-Wrist"].y[f]),
+  blank ? null : fmt(filteredMap["L-Wrist"].x[f]), blank ? null : fmt(filteredMap["L-Wrist"].y[f]),
 
-          blank ? "" : fmt(filteredMap["R-Hip"].x[f]), blank ? "" : fmt(filteredMap["R-Hip"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Hip"].x[f]), blank ? "" : fmt(filteredMap["L-Hip"].y[f]),
+  blank ? null : fmt(filteredMap["R-Hip"].x[f]), blank ? null : fmt(filteredMap["R-Hip"].y[f]),
+  blank ? null : fmt(filteredMap["L-Hip"].x[f]), blank ? null : fmt(filteredMap["L-Hip"].y[f]),
 
-          blank ? "" : fmt(filteredMap["R-Knee"].x[f]), blank ? "" : fmt(filteredMap["R-Knee"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Knee"].x[f]), blank ? "" : fmt(filteredMap["L-Knee"].y[f]),
+  blank ? null : fmt(filteredMap["R-Knee"].x[f]), blank ? null : fmt(filteredMap["R-Knee"].y[f]),
+  blank ? null : fmt(filteredMap["L-Knee"].x[f]), blank ? null : fmt(filteredMap["L-Knee"].y[f]),
 
-          blank ? "" : fmt(filteredMap["R-Ankle"].x[f]), blank ? "" : fmt(filteredMap["R-Ankle"].y[f]),
-          blank ? "" : fmt(filteredMap["L-Ankle"].x[f]), blank ? "" : fmt(filteredMap["L-Ankle"].y[f]),
+  blank ? null : fmt(filteredMap["R-Ankle"].x[f]), blank ? null : fmt(filteredMap["R-Ankle"].y[f]),
+  blank ? null : fmt(filteredMap["L-Ankle"].x[f]), blank ? null : fmt(filteredMap["L-Ankle"].y[f]),
 
-          (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
-        ];
+  (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
+];
 
         rowsFiltered.push(row);
       }
