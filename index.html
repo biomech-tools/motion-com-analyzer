@@ -1370,11 +1370,16 @@ startAnalysisBtn.addEventListener("click", async () => {
     return;
   }
 
-  // ★★★ 追加：フォーカスを外す
   startAnalysisBtn.blur();
 
   mode = "analysis";
   message.textContent = "Analyzing...";
+
+  // ★ まず以前のメッセージを消す
+  showInstruction("");
+
+  // ★ keyHint（Enter / Esc の説明）を表示
+  document.getElementById("keyHint").style.display = "block";
 
   currentFrame = Math.round(video.currentTime * fps);
   frameData = [];
@@ -1383,17 +1388,20 @@ startAnalysisBtn.addEventListener("click", async () => {
 });
 
 
-  finishBtn.addEventListener("click", () => {
-    if (mode !== "analysis") {
-      alert("Analysis has not started yet.");
-      return;
-    }
+finishBtn.addEventListener("click", () => {
+  if (mode !== "analysis") {
+    alert("Analysis has not started yet.");
+    return;
+  }
 
-    const saveRaw = true;
-    const saveFiltered = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
+  // ★ 解析終了なので keyHint を隠す
+  document.getElementById("keyHint").style.display = "none";
 
-    runSaveProcess(saveRaw, saveFiltered);
-  });
+  const saveRaw = true;
+  const saveFiltered = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
+
+  runSaveProcess(saveRaw, saveFiltered);
+});
 
   /* ====== 座標変換 ====== */
   function getCanvasCoordinates(e) {
