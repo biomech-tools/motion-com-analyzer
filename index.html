@@ -192,16 +192,23 @@
 <script>
   /* ===== Part 1 Script Start ===== */
 
-  window.addEventListener("load", () => {
-    const lastShown = localStorage.getItem("warningLastShown");
-    const now = Date.now();
-    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+window.addEventListener("load", () => {
+  const lastShown = localStorage.getItem("warningLastShown");
+  const now = Date.now();
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
-    if (!lastShown || now - lastShown > THIRTY_DAYS) {
-      alert("CAUTION: This tool is protected by copyright (©2026 A. Azuma. All Rights Reserved). Unauthorized downloading, copying, or redistribution is prohibited.\n注意：本ツールは著作権により保護されています (©2026 A. Azuma. All Rights Reserved)．無断でのダウンロード，複製，再配布を禁じます．");
-      localStorage.setItem("warningLastShown", now);
-    }
-  });
+  if (!lastShown || now - lastShown > THIRTY_DAYS) {
+    alert("CAUTION: This tool is protected by copyright (©2026 A. Azuma. All Rights Reserved). Unauthorized downloading, copying, or redistribution is prohibited.\n注意：本ツールは著作権により保護されています (©2026 A. Azuma. All Rights Reserved)．無断でのダウンロード，複製，再配布を禁じます．");
+    localStorage.setItem("warningLastShown", now);
+  }
+
+  // ★★★ 起動ロゴ表示（ここが最重要） ★★★
+  mode = "startup";
+  canvas.width = 1280;
+  canvas.height = 720;
+  drawStartupLogo();
+});
+
 
   const fileSelectBtn = document.getElementById("fileSelectBtn");
   const videoInput = document.getElementById("videoInput");
@@ -278,23 +285,27 @@
     message.textContent = "Movie loading...";
   });
 
-  video.addEventListener("loadedmetadata", () => {
-    resizeCanvasToFit();
 
-    frameSlider.min = 0;
-    frameSlider.max = video.duration;
-    frameSlider.value = 0;
 
-    drawCurrentFrame();
-    redrawAll();
+video.addEventListener("loadedmetadata", () => {
+  mode = "horizontal";   // ★ startup 終了
 
-    showInstruction(
-      `Use the <span style="color:red;">scroll bar</span> to move forward or backward through the movie frames.`
-    );
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  resizeCanvasToFit();
 
-    message.textContent = "Horizontal Adjustment: Click the first point.";
-    mode = "horizontal";
-  });
+  frameSlider.min = 0;
+  frameSlider.max = video.duration;
+  frameSlider.value = 0;
+
+  drawCurrentFrame();
+  redrawAll();
+
+  showInstruction(
+    `Use the <span style="color:red;">scroll bar</span> to move forward or backward through the movie frames.`
+  );
+
+  message.textContent = "Horizontal Adjustment: Click the first point.";
+});
 
   function resizeCanvasToFit() {
     const topMargin = 150;
@@ -522,27 +533,29 @@
     ctx.restore();
   }
 
-  function redrawAll() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+function redrawAll() {
+  if (mode === "startup") return;   // ★ ロゴを守る
 
-    drawCurrentFrame();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (mode !== "analysis") {
-      drawHorizontalPoints();
-      drawCalibrationPoints();
-    }
+  drawCurrentFrame();
 
-    drawPosePoints();
-    drawMissingJointsLegend();
-
-    const frameLabel = document.getElementById("frameNumber");
-
-    if (mode === "analysis") {
-      frameLabel.textContent = currentFrame + 1;
-    } else {
-      frameLabel.textContent = "–";
-    }
+  if (mode !== "analysis") {
+    drawHorizontalPoints();
+    drawCalibrationPoints();
   }
+
+  drawPosePoints();
+  drawMissingJointsLegend();
+
+  const frameLabel = document.getElementById("frameNumber");
+
+  if (mode === "analysis") {
+    frameLabel.textContent = currentFrame + 1;
+  } else {
+    frameLabel.textContent = "–";
+  }
+}
 
   async function seekToFrame(frame) {
     return new Promise(resolve => {
@@ -846,23 +859,25 @@
   /* ====== スライダー ====== */
   window.addEventListener("resize", resizeCanvasToFit);
 
-  frameSlider.addEventListener("input", async () => {
-    if (mode === "analysis") return;
+frameSlider.addEventListener("input", async () => {
+  if (mode === "startup") return;   // ★ ロゴ表示中は無視
+  if (mode === "analysis") return;
 
-    const t = parseFloat(frameSlider.value);
-    video.currentTime = t;
+  const t = parseFloat(frameSlider.value);
+  video.currentTime = t;
 
-    await new Promise(resolve => {
-      const handler = () => {
-        video.removeEventListener("seeked", handler);
-        resolve();
-      };
-      video.addEventListener("seeked", handler);
-    });
-
-    drawCurrentFrame();
-    redrawAll();
+  await new Promise(resolve => {
+    const handler = () => {
+      video.removeEventListener("seeked", handler);
+      resolve();
+    };
+    video.addEventListener("seeked", handler);
   });
+
+  drawCurrentFrame();
+  redrawAll();
+});
+
 
   /* ====== フィルタ処理（Butterworth + Winter residual） ====== */
   function butterworth2Coefficients(fs, fc) {
@@ -1007,7 +1022,37 @@
 
   /* ===== Part 3 Start ===== */
 
-  /* ============================================================
+  
+/* ============================================================
+   ★ 起動画面ロゴ描画関数（ここに置く）
+   ============================================================ */
+function drawStartupLogo() {
+  const ctx = canvas.getContext("2d");
+  const img = new Image();
+  img.src = "logo-banner.png";
+
+  img.onload = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const padding = 40;
+
+    // ★ 画像の本来のアスペクト比を使う
+    const aspect = img.width / img.height;
+
+    const width = canvas.width - padding * 2;
+    const height = width / aspect;   // ← これで縦横比が正しくなる
+
+    const x = padding;
+    const y = (canvas.height - height) / 2;
+
+    ctx.globalAlpha = 1.0;  // ← 色を薄くしない
+    ctx.drawImage(img, x, y, width, height);
+  };
+}
+
+
+
+/* ============================================================
      ★ Excel 保存方式に完全対応した runSaveProcess（最終版）
      ============================================================ */
   function runSaveProcess(saveRaw, saveFiltered) {
@@ -1303,9 +1348,14 @@ cfRow.push(Math.round(cfMap[name].y));
       alert(msg);
     }
 
-    const next = confirm("Proceed New Analysis?\nCancel = Close Program");
-    if (next) location.reload();
-    else window.close();
+const next = confirm("Proceed New Analysis?\nCancel = Close Program");
+if (next) {
+  mode = "startup";
+  drawStartupLogo();
+  location.reload();
+} else {
+  window.close();
+}
   }
 
   /* ===== Part 3 End ===== */
@@ -1352,6 +1402,8 @@ startAnalysisBtn.addEventListener("click", async () => {
     const y = (e.clientY - rect.top) * (canvas.height / rect.height);
     return { x, y };
   }
+
+
 
   /* ===== Part 4 End ===== */
 </script>
