@@ -10,6 +10,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection/dist/movenet.js"></script>
 
+  <!-- Excel 保存用：SheetJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
   <style>
     body { font-family: sans-serif; margin: 20px; }
     .canvas-container { position: relative; display: inline-block; }
@@ -87,18 +90,12 @@
       margin-bottom: 6px;
     }
 
-    .bottom-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
     canvas {
       display: block;
     }
   </style>
 </head>
+
 <body tabindex="0">
 
 <div id="titleBlock" style="margin-bottom:10px;">
@@ -193,6 +190,8 @@
 </style>
 
 <script>
+  /* ===== Part 1 Script Start ===== */
+
   window.addEventListener("load", () => {
     const lastShown = localStorage.getItem("warningLastShown");
     const now = Date.now();
@@ -458,6 +457,7 @@
       }
     );
   }
+
   document.addEventListener("DOMContentLoaded", async () => {
     await tf.setBackend("webgl");
     await tf.ready();
@@ -516,7 +516,9 @@
     ctx.save();
     ctx.translate(w / 2, h / 2);
     ctx.rotate(rotationAngle);
-    ctx.drawImage(video, -w / 2, -h / 2, w, h);
+    ctx.drawImage(video, -w / 2, -h / 2, w, h
+
+    );
     ctx.restore();
   }
 
@@ -586,17 +588,11 @@
     frameNumberSpan.textContent = currentFrame;
   }
 
-  function getCanvasCoordinates(e) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+  /* ===== Part 1 End ===== */
 
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
-  }
+  /* ===== Part 2 Start ===== */
 
+  /* ====== クリック処理 ====== */
   canvas.addEventListener("click", (e) => {
     const { x, y } = getCanvasCoordinates(e);
 
@@ -644,11 +640,10 @@
           const pixelDist = Math.hypot(dx, dy);
 
           let realDist = prompt(
-            "Input the actual distance (a positive number, meters) between the two selected points.\nCancel restarts horizontal adjustment and calibration.",
+            "Input the actual distance (meters) between the two selected points.\nCancel restarts calibration.",
             "1.0"
           );
 
-          // ★ Cancel の場合は完全リセット
           if (realDist === null) {
             horizontalPoints = [];
             calibrationPoints = [];
@@ -656,10 +651,8 @@
             calibrationScale = 1;
 
             mode = "horizontal";
-
             message.textContent = "Horizontal Adjustment: Click the first point.";
-            showInstruction("Use the scroll bar to move forward or backward through the movie frames.");
-
+            showInstruction("Use the scroll bar to move through frames.");
             redrawAll();
             return;
           }
@@ -670,7 +663,7 @@
           calibrationScale = realDist / pixelDist;
 
           let fpsChoice = prompt(
-            "Input fps:\n30 / 60 / 90 / 120 / 240 / Custom (real fps)\nCancel means default (30 fps, but actually runs at 29.97 fps).",
+            "Input fps:\n30 / 60 / 90 / 120 / 240 / Custom\nCancel = default (29.97)",
             "30"
           );
 
@@ -692,7 +685,7 @@
             if (["30","60","90","120","240"].includes(fpsChoice)) {
               fpsNum = parseFloat(fpsChoice);
             } else {
-              let custom = prompt("Input real fps (e.g., 200)", "30");
+              let custom = prompt("Input real fps", "30");
               let v = parseFloat(custom);
               if (!v || v <= 0) v = 30;
               fpsNum = v;
@@ -700,16 +693,15 @@
           }
 
           fps = toActualFPS(fpsNum);
-
           frameDuration = 1 / fps;
           totalFrames = Math.floor(video.duration * fps);
 
           currentFrame = Math.round(video.currentTime * fps);
           mode = "ready";
-          message.textContent = "Analysis Ready: Please press the Start Analysis button.";
+          message.textContent = "Analysis Ready: Press Start Analysis.";
 
           showInstruction(
-            `Use the <span style="color:red;">scroll bar</span> or the <span style="color:red;">arrow keys (right & left)</span> to move forward or backward through the movie frames.`
+            `Use the <span style="color:red;">scroll bar</span> or <span style="color:red;">arrow keys</span> to move through frames.`
           );
 
           redrawAll();
@@ -720,6 +712,7 @@
     }
   });
 
+  /* ====== イベント記録 ====== */
   document.querySelectorAll(".event-row").forEach(row => {
     const btn = row.querySelector("button");
     const input = row.querySelector("input");
@@ -738,11 +731,11 @@
       });
 
       alert(`Memorized Event ${label}.`);
-
       btn.blur();
     });
   });
 
+  /* ====== ドラッグ補正 ====== */
   canvas.addEventListener("mousedown", (e) => {
     if (mode !== "analysis") return;
 
@@ -765,7 +758,6 @@
 
     joints[draggingIndex].x = x;
     joints[draggingIndex].y = y;
-
     joints[draggingIndex].estimated = false;
 
     updateCOM();
@@ -776,37 +768,12 @@
     if (draggingIndex !== null && mode === "analysis") {
       frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
     }
-
     draggingIndex = null;
   });
 
-  startAnalysisBtn.addEventListener("click", () => {
-    if (mode !== "ready") {
-      alert("Uncomplete tasks remain.");
-      return;
-    }
+  /* ===== Part 2 続く ===== */
 
-    currentFrame = Math.round(video.currentTime * fps);
-
-    mode = "analysis";
-    message.textContent = "Analyzing...";
-
-    showInstruction("");
-
-    document.getElementById("keyHint").innerHTML =
-      `Press <span style="color:red;">Enter</span> to advance one frame. 
-       Press <span style="color:red;">Esc</span> to rewind one frame.`;
-
-    document.getElementById("keyHint").style.display = "block";
-
-    startAnalysisBtn.style.display = "none";
-
-    processNextFrame();
-  });
-
-  document.body.setAttribute("tabindex", "0");
-  document.body.focus();
-
+  /* ====== キー操作 ====== */
   document.body.addEventListener("keydown", async (e) => {
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       e.preventDefault();
@@ -834,7 +801,6 @@
       frameNumberSpan.textContent = currentFrame;
 
       frameSlider.value = currentFrame * frameDuration;
-
       return;
     }
 
@@ -854,7 +820,6 @@
       frameNumberSpan.textContent = currentFrame;
 
       frameSlider.value = currentFrame * frameDuration;
-
       return;
     }
 
@@ -874,27 +839,11 @@
       frameNumberSpan.textContent = currentFrame;
 
       frameSlider.value = currentFrame * frameDuration;
-
       return;
     }
   });
 
-  const prevFrameBtn = document.getElementById("prevFrameBtn");
-  if (prevFrameBtn) {
-    prevFrameBtn.addEventListener("click", async () => {
-      if (mode !== "analysis") return;
-      if (currentFrame <= 0) return;
-
-      currentFrame--;
-
-      await seekToFrame(currentFrame);
-      drawCurrentFrame();
-      await runPoseEstimationOnCurrentFrame();
-      redrawAll();
-      frameNumberSpan.textContent = currentFrame;
-    });
-  }
-
+  /* ====== スライダー ====== */
   window.addEventListener("resize", resizeCanvasToFit);
 
   frameSlider.addEventListener("input", async () => {
@@ -915,8 +864,7 @@
     redrawAll();
   });
 
-  // ====== フィルタ関連 ======
-
+  /* ====== フィルタ処理（Butterworth + Winter residual） ====== */
   function butterworth2Coefficients(fs, fc) {
     const ita = 1 / Math.tan(Math.PI * fc / fs);
     const q = Math.SQRT2;
@@ -928,7 +876,6 @@
     let a1 = 2 * (ita * ita - 1) * b0;
     let a2 = (1 - q * ita + ita * ita) * b0;
 
-    // DC ゲインを 1 に正規化
     const gain = (b0 + b1 + b2) / (1 + a1 + a2);
     b0 /= gain;
     b1 /= gain;
@@ -994,7 +941,6 @@
     return { a, b };
   }
 
-  // 欠損補完：先頭を最初の有効値で埋め、その後は前値補完
   function fillMissing(orig) {
     const filled = [...orig];
 
@@ -1057,7 +1003,16 @@
     return { fc: bestFc, filtered: bestFilt };
   }
 
+  /* ===== Part 2 End ===== */
+
+  /* ===== Part 3 Start ===== */
+
+  /* ============================================================
+     ★ Excel 保存方式に完全対応した runSaveProcess（最終版）
+     ============================================================ */
   function runSaveProcess(saveRaw, saveFiltered) {
+
+    /* ---------- 1. 前処理：frameData のトリミング ---------- */
     let firstValidIndex = 0;
     for (let i = 0; i < frameData.length; i++) {
       const jf = frameData[i];
@@ -1074,6 +1029,7 @@
     }
     const scale = calibrationScale || 1.0;
 
+    /* ---------- 2. Raw データ生成（AoA形式） ---------- */
     const header = [
       "Frame No.","Time (s)","COM-X (m)","COM-Y (m)",
       "R-Ear-X (m)","R-Ear-Y (m)","L-Ear-X (m)","L-Ear-Y (m)",
@@ -1087,7 +1043,7 @@
     ];
 
     const rowsRaw = [];
-    rowsRaw.push(header.join(","));
+    rowsRaw.push(header);
 
     const seriesMap = {};
     KP_DEF.forEach(def => {
@@ -1176,32 +1132,12 @@
         (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
       ];
 
-      rowsRaw.push(row.join(","));
+      rowsRaw.push(row);
     }
 
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mi = String(now.getMinutes()).padStart(2, "0");
+  /* ===== Part 3 続く ===== */
 
-    const baseFilename = `CoodinateCSV-${yyyy}${mm}${dd}-${hh}${mi}`;
-
-    if (saveRaw) {
-      const csvContentRaw = rowsRaw.join("\r\n");
-      const blobRaw = new Blob([csvContentRaw], { type: "text/csv" });
-      const urlRaw = URL.createObjectURL(blobRaw);
-
-      const aRaw = document.createElement("a");
-      aRaw.href = urlRaw;
-      aRaw.download = `${baseFilename}.csv`;
-      document.body.appendChild(aRaw);
-      aRaw.click();
-      document.body.removeChild(aRaw);
-      URL.revokeObjectURL(urlRaw);
-    }
-
+    /* ---------- 3. Filtered の可否判定 ---------- */
     let hasMissing = false;
     KP_DEF.forEach(def => {
       const arrX = seriesMap[def.name].x;
@@ -1227,10 +1163,13 @@
       msg = "Only the raw-data was saved because the analysis included unextracted coordinates. Also, the number of frames is too less (no less than 20).";
     }
 
-    let filteredMap = {};
-    let cfMap = {};
+    /* ---------- 4. Filtered データ生成 ---------- */
+    let rowsFiltered = null;
 
     if (allowFiltered) {
+      const filteredMap = {};
+      const cfMap = {};
+
       KP_DEF.forEach(def => {
         const name = def.name;
         const sx = seriesMap[name].x;
@@ -1249,8 +1188,8 @@
         };
       });
 
-      const rowsFiltered = [];
-      rowsFiltered.push(header.join(","));
+      rowsFiltered = [];
+      rowsFiltered.push(header);
 
       for (let f = 0; f < trimmedFrameData.length; f++) {
         let sumX = 0, sumY = 0, count = 0;
@@ -1269,7 +1208,6 @@
         function fmt(v) { return (v == null) ? "" : v.toFixed(3); }
 
         const timeSec = f / fps;
-
         const blank = (f < 4 || f >= trimmedFrameData.length - 4);
 
         const row = [
@@ -1303,7 +1241,7 @@
           (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
         ];
 
-        rowsFiltered.push(row.join(","));
+        rowsFiltered.push(row);
       }
 
       const cfRow = [];
@@ -1330,23 +1268,36 @@
       pushCf("L-Ankle");
 
       cfRow.push("");
-      rowsFiltered.push(cfRow.join(","));
-
-      const csvContentFiltered = rowsFiltered.join("\r\n");
-      const blobFiltered = new Blob([csvContentFiltered], { type: "text/csv" });
-      const urlFiltered = URL.createObjectURL(blobFiltered);
-
-      const aFiltered = document.createElement("a");
-      aFiltered.href = urlFiltered;
-      aFiltered.download = `${baseFilename}-filtered.csv`;
-      document.body.appendChild(aFiltered);
-      aFiltered.click();
-      document.body.removeChild(aFiltered);
-      URL.revokeObjectURL(urlFiltered);
+      rowsFiltered.push(cfRow);
     }
 
+    /* ---------- 5. Excel 1ファイル保存 ---------- */
+
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mi = String(now.getMinutes()).padStart(2, "0");
+
+    const baseFilename = `CoodinateData-${yyyy}${mm}${dd}-${hh}${mi}`;
+
+    const wb = XLSX.utils.book_new();
+
+    if (saveRaw) {
+      const wsRaw = XLSX.utils.aoa_to_sheet(rowsRaw);
+      XLSX.utils.book_append_sheet(wb, wsRaw, "Raw");
+    }
+
+    if (allowFiltered && rowsFiltered) {
+      const wsFiltered = XLSX.utils.aoa_to_sheet(rowsFiltered);
+      XLSX.utils.book_append_sheet(wb, wsFiltered, "Filtered");
+    }
+
+    XLSX.writeFile(wb, baseFilename + ".xlsx");
+
     if (saveRaw && allowFiltered) {
-      alert("Raw- and filtered data were saved completely.");
+      alert("Raw- and filtered data were saved completely (Excel file).");
     } else if (saveRaw && !allowFiltered && msg) {
       alert(msg);
     }
@@ -1356,50 +1307,56 @@
     else window.close();
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("finishBtn").addEventListener("click", () => {
-      if (!frameData || frameData.length === 0) {
-        alert("No data available for saving.");
-        return;
-      }
+  /* ===== Part 3 End ===== */
 
-      const save = confirm("Save coordinate CSV data?");
-      if (!save) {
-        const next = confirm("Proceed New Analysis?\nCancel = Close Program");
-        if (next) location.reload();
-        else window.close();
-        return;
-      }
 
-      document.getElementById("saveOptionsPanel").style.display = "block";
-    });
+  /* ===== Part 4 Start ===== */
 
-    document.getElementById("saveOptionsOk").addEventListener("click", () => {
-      const saveRaw = document.getElementById("saveRaw").checked;
-      const saveFiltered = document.getElementById("saveFiltered").checked;
+  /* ====== Start / Finish ボタン ====== */
+startAnalysisBtn.addEventListener("click", async () => {
+  if (mode !== "ready") {
+    alert("Calibration is not completed yet.");
+    return;
+  }
 
-      document.getElementById("saveOptionsPanel").style.display = "none";
+  // ★★★ 追加：フォーカスを外す
+  startAnalysisBtn.blur();
 
-      runSaveProcess(saveRaw, saveFiltered);
-    });
+  mode = "analysis";
+  message.textContent = "Analyzing...";
 
-    document.getElementById("saveOptionsCancel").addEventListener("click", () => {
-      document.getElementById("saveOptionsPanel").style.display = "none";
-    });
+  currentFrame = Math.round(video.currentTime * fps);
+  frameData = [];
+
+  await processNextFrame();
+});
+
+
+  finishBtn.addEventListener("click", () => {
+    if (mode !== "analysis") {
+      alert("Analysis has not started yet.");
+      return;
+    }
+
+    const saveRaw = true;
+    const saveFiltered = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
+
+    runSaveProcess(saveRaw, saveFiltered);
   });
+
+  /* ====== 座標変換 ====== */
+  function getCanvasCoordinates(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    return { x, y };
+  }
+
+  /* ===== Part 4 End ===== */
 </script>
-
-<div id="saveOptionsPanel"
-     style="display:none; position:fixed; top:30%; left:50%; transform:translateX(-50%);
-            background:white; border:1px solid #ccc; padding:20px; z-index:999999;">
-  <h3>Select data to save</h3>
-
-  <label><input type="checkbox" id="saveRaw" checked> Raw-data</label><br>
-  <label><input type="checkbox" id="saveFiltered"> Filtered-data</label><br><br>
-
-  <button id="saveOptionsOk">OK</button>
-  <button id="saveOptionsCancel">Cancel</button>
-</div>
 
 </body>
 </html>
+
+
+
