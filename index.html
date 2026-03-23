@@ -358,10 +358,10 @@ function drawPlus(x, y, color, size = 12 * SCALE_UI) {
 
 
   function drawHorizontalPoints() {
-    horizontalPoints.forEach(p => drawPlus(p.x, p.y, "red", 26));
+    horizontalPoints.forEach(p => drawPlus(p.x, p.y, "red", 12 * SCALE_UI));
   }
   function drawCalibrationPoints() {
-    calibrationPoints.forEach(p => drawPlus(p.x, p.y, "blue", 26));
+    calibrationPoints.forEach(p => drawPlus(p.x, p.y, "blue", 12 * SCALE_UI));
   }
 
   let blinkOn = true;
@@ -384,25 +384,42 @@ function drawPlus(x, y, color, size = 12 * SCALE_UI) {
     const maxX = placed.length ? Math.max(...placed.map(j => j.x)) : canvasW * 0.55;
     const minX = placed.length ? Math.min(...placed.map(j => j.x)) : canvasW * 0.45;
 
-    let legendX = maxX + 80;
-    const labelWidth = 100;
+    let legendX = maxX + 80 * SCALE_UI;
+    const labelWidth = 100 * SCALE_UI;
 
     if (legendX + labelWidth > canvasW) {
       legendX = minX - labelWidth;
     }
 
-    const baseY = canvasH * 0.35;
-    const gap = 75;
+    const comY = com ? com.y : canvasH * 0.5;
+    const gap = 30 * SCALE_UI;
 
+    const upperBody = ["R-Ear", "L-Ear", "R-Shoulder", "L-Shoulder", "R-Elbow", "L-Elbow", "R-Wrist", "L-Wrist"];
+    const lowerBody = ["R-Hip", "L-Hip", "R-Knee", "L-Knee", "R-Ankle", "L-Ankle"];
 
+    const missingUpper = [];
+    const missingLower = [];
 
-
-    let idx = 0;
     joints.forEach(j => {
       if (j.estimated) {
-        j.x = legendX;
-        j.y = baseY + gap * idx++;
+        if (upperBody.includes(j.part)) {
+          missingUpper.push(j);
+        } else if (lowerBody.includes(j.part)) {
+          missingLower.push(j);
+        }
       }
+    });
+
+    let upperStartY = comY - gap * missingUpper.length;
+    missingUpper.forEach((j, idx) => {
+      j.x = legendX;
+      j.y = upperStartY + gap * idx;
+    });
+
+    let lowerStartY = comY + gap;
+    missingLower.forEach((j, idx) => {
+      j.x = legendX;
+      j.y = lowerStartY + gap * idx;
     });
   }
 
