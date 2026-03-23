@@ -246,6 +246,7 @@ window.addEventListener("load", () => {
   let draggingIndex = null;
 
   let currentScale = 1;
+  let SCALE_UI = 1;
 
   let frameData = [];
 
@@ -294,6 +295,13 @@ video.addEventListener("loadedmetadata", () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   resizeCanvasToFit();
 
+ 
+const ref = 720;
+const base = Math.min(video.videoWidth, video.videoHeight);
+SCALE_UI = Math.max(1, Math.min(3, base / ref));
+
+
+
   frameSlider.min = 0;
   frameSlider.max = video.duration;
   frameSlider.value = 0;
@@ -328,26 +336,27 @@ video.addEventListener("loadedmetadata", () => {
     frameSlider.style.width = canvas.style.width;
   }
 
-  function drawPlus(x, y, color, size = 12) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 5;
+function drawPlus(x, y, color, size = 12 * SCALE_UI) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3 * SCALE_UI;
 
-    ctx.beginPath();
-    ctx.moveTo(x - size, y);
-    ctx.lineTo(x + size, y);
-    ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - size, y);
+  ctx.lineTo(x + size, y);
+  ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(x, y - size);
-    ctx.lineTo(x, y + size);
-    ctx.stroke();
-  }
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x, y + size);
+  ctx.stroke();
+}
+
 
   function drawHorizontalPoints() {
-    horizontalPoints.forEach(p => drawPlus(p.x, p.y, "red", 11));
+    horizontalPoints.forEach(p => drawPlus(p.x, p.y, "red", 26));
   }
   function drawCalibrationPoints() {
-    calibrationPoints.forEach(p => drawPlus(p.x, p.y, "blue", 11));
+    calibrationPoints.forEach(p => drawPlus(p.x, p.y, "blue", 26));
   }
 
   let blinkOn = true;
@@ -378,7 +387,10 @@ video.addEventListener("loadedmetadata", () => {
     }
 
     const baseY = canvasH * 0.35;
-    const gap = 40;
+    const gap = 75;
+
+
+
 
     let idx = 0;
     joints.forEach(j => {
@@ -394,13 +406,14 @@ video.addEventListener("loadedmetadata", () => {
     if (missing.length === 0) return;
 
     missing.forEach(j => {
-      if (blinkOn) {
-        drawPlus(j.x, j.y, "cyan", 12);
+if (blinkOn) {
+  drawPlus(j.x, j.y, "cyan", 6 * SCALE_UI);
 
-        ctx.font = "bold 24px sans-serif";
-        ctx.fillStyle = "cyan";
-        ctx.fillText(j.part, j.x + 20, j.y - 14);
-      }
+  ctx.font = `bold ${21 * SCALE_UI}px sans-serif`;
+  ctx.fillStyle = "cyan";
+  ctx.fillText(j.part, j.x + 16 * SCALE_UI, j.y + 6 * SCALE_UI);
+}
+
     });
   }
 
@@ -418,27 +431,29 @@ video.addEventListener("loadedmetadata", () => {
         color = blinkOn ? "cyan" : "rgba(0,255,255,0.3)";
       }
 
-      drawPlus(j.x, j.y, color, 12);
+drawPlus(j.x, j.y, color, 10 * SCALE_UI);
 
-      if (!j.estimated) {
-        ctx.font = "bold 24px sans-serif";
-        ctx.fillStyle = color;
-        ctx.fillText(j.part, j.x + 14 * currentScale, j.y - 14 * currentScale);
-      }
+if (!j.estimated) {
+  ctx.font = `bold ${21 * SCALE_UI}px sans-serif`;
+  ctx.fillStyle = color;
+  ctx.fillText(j.part, j.x + 14 * SCALE_UI, j.y + 4 * SCALE_UI);
+}
+
     });
 
     if (com) {
       const drawCOM = (!hasUnplaced || (hasUnplaced && blinkOn));
 
-      if (drawCOM) {
-        ctx.beginPath();
-        ctx.arc(com.x, com.y, 12, 0, Math.PI * 2);
-        ctx.fillStyle = "yellow";
-        ctx.fill();
-        ctx.strokeStyle = "black";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
+if (drawCOM) {
+  ctx.beginPath();
+  ctx.arc(com.x, com.y, 10 * SCALE_UI, 0, Math.PI * 2);
+  ctx.fillStyle = "yellow";
+  ctx.fill();
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 3 * SCALE_UI;
+  ctx.stroke();
+}
+
     }
   }
 
@@ -762,9 +777,10 @@ if (mode === "analysis") {
     draggingIndex = null;
     joints.forEach((j, i) => {
       if (j.x != null && j.y != null) {
-        if (Math.hypot(j.x - x, j.y - y) < 15) {
-          draggingIndex = i;
-        }
+if (Math.hypot(j.x - x, j.y - y) < 15 * SCALE_UI) {
+  draggingIndex = i;
+}
+
       }
     });
   });
