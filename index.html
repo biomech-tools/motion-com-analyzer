@@ -584,7 +584,7 @@ if (drawCOM) {
   }
 
   async function runPoseEstimationOnCurrentFrame() {
-    if (!detector) return;
+    if (!detector) return false;
 
     const small = document.createElement("canvas");
     const sctx = small.getContext("2d");
@@ -596,7 +596,7 @@ if (drawCOM) {
     if (!poses || poses.length === 0) {
       joints = [];
       com = null;
-      return;
+      return false;
     }
 
     const kp = poses[0].keypoints;
@@ -619,6 +619,7 @@ if (drawCOM) {
 
     updateCOM();
     layoutMissingJointsLegend();
+    return true;
   }
 
   function drawCurrentFrame() {
@@ -1537,15 +1538,6 @@ startAnalysisBtn.addEventListener("click", async () => {
 
   startAnalysisBtn.blur();
 
-  mode = "analysis";
-  message.textContent = "Analyzing...";
-
-  // ★ まず以前のメッセージを消す
-  showInstruction("");
-
-  // ★ keyHint（Enter / Esc の説明）を表示
-  document.getElementById("keyHint").style.display = "block";
-
   // ★ ビデオの現在時刻からフレーム番号を計算
   const currentTime = video.currentTime;
 
@@ -1567,11 +1559,39 @@ startAnalysisBtn.addEventListener("click", async () => {
     currentFrame = Math.round(currentTime * fps);
   }
 
+  // 現在のフレームで解析を試行
+  drawCurrentFrame();
+  const poseDetected = await runPoseEstimationOnCurrentFrame();
+
+  // ★ 人が検出されなかった場合の処理
+  if (!poseDetected) {
+    alert('Move to the frame to be analyzed and press the "Start Analysis" button again.');
+
+    // mode を ready に戻す（スクロールバーと矢印キー操作可能）
+    mode = "ready";
+    message.textContent = "Analysis Ready: Press Start Analysis.";
+
+    // 操作可能メッセージを表示
+    showInstruction(
+      `Use the <span style="color:red;">scroll bar</span> or <span style="color:red;">arrow keys</span> to move through frames.`
+    );
+
+    redrawAll();
+    return;
+  }
+
+  // ★ 人が検出された場合は解析を開始
+  mode = "analysis";
+  message.textContent = "Analyzing...";
+
+  // まず以前のメッセージを消す
+  showInstruction("");
+
+  // keyHint（Enter / Esc の説明）を表示
+  document.getElementById("keyHint").style.display = "block";
+
   frameData = [];
 
-  // 現在のフレームで解析を開始（追加のseekは不要）
-  drawCurrentFrame();
-  await runPoseEstimationOnCurrentFrame();
   redrawAll();
 
   frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
