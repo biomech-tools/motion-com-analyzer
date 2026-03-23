@@ -15,14 +15,19 @@
 
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    .canvas-container { position: relative; display: inline-block; }
+.canvas-container { position: relative; display: inline-block; }
 
-    #canvas {
-      border: 1px solid #ccc;
-      width: auto;
-      height: auto;
-      max-width: none;
-    }
+
+#canvas {
+  height: 75vh;
+  max-height: 1000px;
+  width: 100%;
+  max-width: 100%
+  object-fit: contain;
+  border: 1px solid #ccc;
+
+}
+
 
     #analysisButtons {
       position: absolute;
