@@ -157,9 +157,9 @@
       <input type="range" id="frameSlider" min="0" max="0" step="0.01" value="0" style="width: 600px; margin:0;">
     </div>
 
-    <div id="instructionMessage" style="margin-top:6px; font-size:14px; color:black;"></div>
+    <div id="instructionMessage" style="margin-top:6px; font-size:14px; line-height:1.4; color:black;"></div>
 
-    <div id="keyHint" style="margin-top: 10px; font-size: 16px; display: none;">
+    <div id="keyHint" style="margin-top:6px; font-size:14px; line-height:1.4; display: none;">
       Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame.
       Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame.
     </div>
@@ -333,7 +333,7 @@ video.addEventListener("loadedmetadata", async () => {
   document.getElementById("flipButton").style.display = "block";
 
   showInstruction(
-    `Use the <span style="color:red;">scroll bar</span> to move forward or backward through the movie frames.`
+    `Use the <span style="color:red; font-weight:bold;">scroll bar</span> to move forward or backward through the movie frames.`
   );
 
   message.textContent = "Horizontal Adjustment: Click the first point.";
@@ -789,6 +789,12 @@ if (mode === "analysis") {
             message.textContent = "Horizontal Adjustment: Click the first point.";
             showInstruction("Use the scroll bar to move through frames.");
             document.getElementById("flipButton").style.display = "block";
+
+            // スクロールバーとの同期を確実にする
+            const currentTime = video.currentTime;
+            frameSlider.value = currentTime;
+
+            drawCurrentFrame();
             redrawAll();
             return;
           }
@@ -838,12 +844,29 @@ if (mode === "analysis") {
             }
           }
 
-          currentFrame = Math.round(video.currentTime * fps);
+          // ★ 現在の video.currentTime から正しいフレーム番号を計算
+          if (frameTimestamps.length > 0) {
+            const currentTime = video.currentTime;
+            let closestFrame = 0;
+            let minDiff = Math.abs(frameTimestamps[0] - currentTime);
+
+            for (let i = 1; i < frameTimestamps.length; i++) {
+              const diff = Math.abs(frameTimestamps[i] - currentTime);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closestFrame = i;
+              }
+            }
+            currentFrame = closestFrame;
+          } else {
+            currentFrame = Math.round(video.currentTime * fps);
+          }
+
           mode = "ready";
           message.textContent = "Analysis Ready: Press Start Analysis.";
 
           showInstruction(
-            `Use the <span style="color:red;">scroll bar</span> or <span style="color:red;">arrow keys</span> to move through frames.`
+            `Use the <span style="color:red; font-weight:bold;">scroll bar</span> or <span style="color:red; font-weight:bold;">arrow keys</span> to move through frames.`
           );
 
           redrawAll();
@@ -962,34 +985,19 @@ if (mode === "analysis") {
     }
 
 if (e.key === "ArrowRight") {
-  if (mode !== "ready") return;   // ★ 追加：ready 以外は無効
+  if (mode !== "ready") return;   // ★ ready 以外は無効
 
   if (currentFrame >= totalFrames - 1) return;
 
+  currentFrame++;
 
-      currentFrame++;
-      await seekToFrame(currentFrame);
-      drawCurrentFrame();
+  // ★ frameTimestampsを使ってフレーム移動（解析中・保存準備中と完全に同じ方式）
+  await seekToFrame(currentFrame);
 
-      if (mode === "analysis") {
-        await runPoseEstimationOnCurrentFrame();
-        frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
-      }
-
-      redrawAll();
-if (mode === "analysis") {
-  frameNumberSpan.textContent = currentFrame + 1;
-} else {
-  frameNumberSpan.textContent = "–";
+  drawCurrentFrame();
+  redrawAll();
+  return;
 }
-
-      if (frameTimestamps.length > 0 && currentFrame < frameTimestamps.length) {
-        frameSlider.value = frameTimestamps[currentFrame];
-      } else {
-        frameSlider.value = currentFrame * frameDuration;
-      }
-      return;
-    }
 
 if (e.key === "ArrowLeft") {
   if (mode !== "ready") return;   // ★ ready 以外は無効
@@ -997,10 +1005,12 @@ if (e.key === "ArrowLeft") {
   if (currentFrame <= 0) return;
 
   currentFrame--;
+
+  // ★ frameTimestampsを使ってフレーム移動（解析中・保存準備中と完全に同じ方式）
   await seekToFrame(currentFrame);
+
   drawCurrentFrame();
   redrawAll();
-  frameSlider.value = currentFrame * frameDuration;
   return;
 }
   });
@@ -1022,6 +1032,26 @@ frameSlider.addEventListener("input", async () => {
     };
     video.addEventListener("seeked", handler);
   });
+
+  // ★ スクロールバーで移動した時にcurrentFrameを更新
+  if (mode === "ready") {
+    if (frameTimestamps.length > 0) {
+      // 現在の時刻に最も近いフレームを探す
+      let closestFrame = 0;
+      let minDiff = Math.abs(frameTimestamps[0] - t);
+
+      for (let i = 1; i < frameTimestamps.length; i++) {
+        const diff = Math.abs(frameTimestamps[i] - t);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestFrame = i;
+        }
+      }
+      currentFrame = closestFrame;
+    } else {
+      currentFrame = Math.round(t * fps);
+    }
+  }
 
   drawCurrentFrame();
   redrawAll();
@@ -1573,7 +1603,7 @@ startAnalysisBtn.addEventListener("click", async () => {
 
     // 操作可能メッセージを表示
     showInstruction(
-      `Use the <span style="color:red;">scroll bar</span> or <span style="color:red;">arrow keys</span> to move through frames.`
+      `Use the <span style="color:red; font-weight:bold;">scroll bar</span> or <span style="color:red; font-weight:bold;">arrow keys</span> to move through frames.`
     );
 
     redrawAll();
