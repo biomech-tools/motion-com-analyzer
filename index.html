@@ -674,7 +674,7 @@ function redrawAll() {
       let done = false;
 
       const handler = () => {
-        if (!done) {
+        if (!done && video.readyState >= 2) {
           done = true;
           video.removeEventListener("seeked", handler);
           resolve();
@@ -696,7 +696,7 @@ function redrawAll() {
           video.removeEventListener("seeked", handler);
           resolve();
         }
-      }, 200);
+      }, 500);
     });
   }
 
@@ -708,6 +708,14 @@ function redrawAll() {
     }
 
     await seekToFrame(currentFrame);
+
+    // ビデオが確実に準備できるまで待機
+    let retries = 0;
+    while (video.readyState < 2 && retries < 10) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      retries++;
+    }
+
     drawCurrentFrame();
     await runPoseEstimationOnCurrentFrame();
     redrawAll();
@@ -823,15 +831,12 @@ if (mode === "analysis") {
           if (!fpsChoice || fpsChoice.trim() === "") {
             fpsNum = 30;
           } else {
-            fpsChoice = fpsChoice.trim().toLowerCase();
-            if (["30","60","90","120","240"].includes(fpsChoice)) {
-              fpsNum = parseFloat(fpsChoice);
-            } else {
-              let custom = prompt("Input real fps", "30");
-              let v = parseFloat(custom);
-              if (!v || v <= 0) v = 30;
-              fpsNum = v;
+            fpsChoice = fpsChoice.trim();
+            let v = parseFloat(fpsChoice);
+            if (!v || v <= 0) {
+              v = 30;
             }
+            fpsNum = v;
           }
 
           fps = toActualFPS(fpsNum);
@@ -1628,7 +1633,7 @@ startAnalysisBtn.addEventListener("click", async () => {
   frameNumberSpan.textContent = currentFrame + 1;
 });
 
-
+const finishBtn = document.getElementById("finishBtn");
 finishBtn.addEventListener("click", () => {
   if (mode !== "analysis") {
     alert("Analysis has not started yet.");
