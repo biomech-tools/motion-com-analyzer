@@ -223,8 +223,15 @@ window.addEventListener("load", () => {
 
   // ★★★ 起動ロゴ表示（ここが最重要） ★★★
   mode = "startup";
-  canvas.width = 1280;
-  canvas.height = 720;
+  const topMargin = 150;
+  const bottomMargin = 60;
+  const availableHeight = window.innerHeight - topMargin - bottomMargin;
+
+  // 一般的な16:9の動画比率を使用（起動時の横幅を91%に縮小）
+  const aspectRatio = 16 / 9;
+  canvas.height = availableHeight;
+  canvas.width = (availableHeight * aspectRatio) * 0.91;
+
   drawStartupLogo();
 });
 
