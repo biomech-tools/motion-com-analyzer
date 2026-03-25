@@ -741,7 +741,7 @@ if (mode === "analysis") {
   /* ===== Part 2 Start ===== */
 
   /* ====== クリック処理 ====== */
-  canvas.addEventListener("click", (e) => {
+  canvas.addEventListener("click", async (e) => {
     const { x, y } = getCanvasCoordinates(e);
 
     if (mode === "horizontal") {
@@ -784,17 +784,19 @@ if (mode === "analysis") {
 
         document.getElementById("flipButton").style.display = "none";
 
-        setTimeout(() => {
+        setTimeout(async () => {
           const dx = calibrationPoints[1].x - calibrationPoints[0].x;
           const dy = calibrationPoints[1].y - calibrationPoints[0].y;
           const pixelDist = Math.hypot(dx, dy);
 
           let realDist = prompt(
-            "Input the actual distance (meters) between the two selected points.\nCancel restarts calibration.",
+            "Input the actual distance (meters) between the two points.\nCancel = Retry calibration.\n(Don't switch to a different browser.)",
             "1.0"
           );
 
           if (realDist === null) {
+            alert("Retry horizontal adjustment and calibration again.");
+
             horizontalPoints = [];
             calibrationPoints = [];
             rotationAngle = 0;
@@ -819,10 +821,51 @@ if (mode === "analysis") {
 
           calibrationScale = realDist / pixelDist;
 
+          // ★ fpsダイアログ中のブラウザ切り替え検出
+          let fpsDialogInterrupted = false;
+          let fpsDialogStartTime = Date.now();
+
+          const fpsVisibilityHandler = () => {
+            if (document.hidden) {
+              fpsDialogInterrupted = true;
+            }
+          };
+
+          document.addEventListener("visibilitychange", fpsVisibilityHandler);
+
           let fpsChoice = prompt(
-            "Input fps:\n30 / 60 / 90 / 120 / 240 / Custom\nCancel = default (29.97)",
+            "Input fps:\n30 / 60 / 120 / 240 / Custom (real fps)\nCancel = default (29.97 fps)\n(Don't switch to a different browser.)",
             "30"
           );
+
+          let fpsDialogEndTime = Date.now();
+
+          // ★ イベントキャプチャのために50ms待機してから検証
+          await new Promise(resolve => setTimeout(resolve, 50));
+
+          document.removeEventListener("visibilitychange", fpsVisibilityHandler);
+
+          // ★ ブラウザ切り替えが検出された場合、水平補正からやり直し
+          if (fpsDialogInterrupted) {
+            alert("Retry horizontal adjustment and calibration again.");
+
+            horizontalPoints = [];
+            calibrationPoints = [];
+            rotationAngle = 0;
+            calibrationScale = 1;
+
+            mode = "horizontal";
+            message.textContent = "Horizontal Adjustment: Click the first point.";
+            showInstruction("Use the scroll bar to move through frames.");
+            document.getElementById("flipButton").style.display = "block";
+
+            const currentTime = video.currentTime;
+            frameSlider.value = currentTime;
+
+            drawCurrentFrame();
+            redrawAll();
+            return;
+          }
 
           function toActualFPS(n) {
             if (n === 30) return 29.97;
@@ -1546,14 +1589,43 @@ cfRow.push(Math.round(cfMap[name].y));
       alert(msg);
     }
 
-const next = confirm("Proceed New Analysis?\nCancel = Close Program");
-if (next) {
-  mode = "startup";
-  drawStartupLogo();
-  location.reload();
-} else {
-  window.close();
-}
+    // ★ ダイアログ表示中のタブ切り替え・フォーカス喪失を検出
+    let dialogInterrupted = false;
+    const visibilityChangeHandler = () => {
+      if (document.hidden) {
+        dialogInterrupted = true;
+      }
+    };
+    const blurHandler = () => {
+      dialogInterrupted = true;
+    };
+
+    document.addEventListener("visibilitychange", visibilityChangeHandler);
+    window.addEventListener("blur", blurHandler);
+
+    // ★ ダイアログ表示前の時刻を記録
+    const dialogStartTime = Date.now();
+    const next = confirm("Proceed new analysis?\nCancel = Close program");
+    const dialogEndTime = Date.now();
+
+    // ★ イベントリスナーを解除
+    document.removeEventListener("visibilitychange", visibilityChangeHandler);
+    window.removeEventListener("blur", blurHandler);
+
+    // ★ ダイアログが100ms未満で閉じられた場合、またはタブ切り替え/フォーカス喪失があった場合は、意図しないキャンセルの可能性
+    const dialogDuration = dialogEndTime - dialogStartTime;
+    if ((dialogDuration < 100 || dialogInterrupted) && !next) {
+      alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
+      return;
+    }
+
+    if (next) {
+      mode = "startup";
+      drawStartupLogo();
+      location.reload();
+    } else {
+      window.close();
+    }
   }
 
   /* ===== Part 3 End ===== */
@@ -1652,76 +1724,80 @@ finishBtn.addEventListener("click", () => {
 
   // ★ ダイアログ表示中のタブ切り替え・フォーカス喪失を検出
   let dialogInterrupted = false;
+
   const visibilityChangeHandler = () => {
     if (document.hidden) {
       dialogInterrupted = true;
     }
   };
-  const blurHandler = () => {
-    dialogInterrupted = true;
-  };
 
   document.addEventListener("visibilitychange", visibilityChangeHandler);
-  window.addEventListener("blur", blurHandler);
 
   // ★ ダイアログ表示前の時刻を記録
   const dialogStartTime = Date.now();
   const shouldSave = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
   const dialogEndTime = Date.now();
 
-  // ★ イベントリスナーを解除
-  document.removeEventListener("visibilitychange", visibilityChangeHandler);
-  window.removeEventListener("blur", blurHandler);
+  // ★ イベントをキャプチャする時間を確保してから判定
+  setTimeout(() => {
+    document.removeEventListener("visibilitychange", visibilityChangeHandler);
 
-  // ★ ダイアログが100ms未満で閉じられた場合、またはタブ切り替え/フォーカス喪失があった場合は、意図しないキャンセルの可能性
-  const dialogDuration = dialogEndTime - dialogStartTime;
-  if ((dialogDuration < 100 || dialogInterrupted) && !shouldSave) {
-    alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
-    document.getElementById("keyHint").style.display = "block";
-    return;
-  }
+    const dialogDuration = dialogEndTime - dialogStartTime;
 
-  if (shouldSave) {
-    const saveRaw = true;
-    const saveFiltered = true;
-    runSaveProcess(saveRaw, saveFiltered);
-  } else {
-    // ★ 2つ目のダイアログでも同様の保護を追加
-    let dialogInterrupted2 = false;
-    const visibilityChangeHandler2 = () => {
-      if (document.hidden) {
-        dialogInterrupted2 = true;
-      }
-    };
-    const blurHandler2 = () => {
-      dialogInterrupted2 = true;
-    };
-
-    document.addEventListener("visibilitychange", visibilityChangeHandler2);
-    window.addEventListener("blur", blurHandler2);
-
-    const dialog2StartTime = Date.now();
-    const next = confirm("Proceed New Analysis?\nCancel = Close Program");
-    const dialog2EndTime = Date.now();
-
-    document.removeEventListener("visibilitychange", visibilityChangeHandler2);
-    window.removeEventListener("blur", blurHandler2);
-
-    const dialog2Duration = dialog2EndTime - dialog2StartTime;
-    if ((dialog2Duration < 100 || dialogInterrupted2) && !next) {
-      alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
-      document.getElementById("keyHint").style.display = "block";
-      return;
-    }
-
-    if (next) {
-      mode = "startup";
-      drawStartupLogo();
-      location.reload();
+    // ★ OKを選択した場合は保存処理へ
+    if (shouldSave) {
+      const saveRaw = true;
+      const saveFiltered = true;
+      runSaveProcess(saveRaw, saveFiltered);
     } else {
-      window.close();
+      // ★ Cancelを選択した場合：タブ切り替えがあった場合のみ警告
+      if (dialogInterrupted) {
+        alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
+        document.getElementById("keyHint").style.display = "block";
+        return;
+      }
+
+      // ★ 正常にCancelを選択した場合は次のダイアログへ
+      // ★ 2つ目のダイアログでも同様の保護を追加
+      let dialogInterrupted2 = false;
+
+      const visibilityChangeHandler2 = () => {
+        if (document.hidden) {
+          dialogInterrupted2 = true;
+        }
+      };
+
+      document.addEventListener("visibilitychange", visibilityChangeHandler2);
+
+      const dialog2StartTime = Date.now();
+      const next = confirm("Proceed new analysis?\nCancel = Close program\n(Don't switch to a different browser.)");
+      const dialog2EndTime = Date.now();
+
+      // ★ イベントをキャプチャする時間を確保してから判定
+      setTimeout(() => {
+        document.removeEventListener("visibilitychange", visibilityChangeHandler2);
+
+        const dialog2Duration = dialog2EndTime - dialog2StartTime;
+
+        // ★ OKを選択した場合は新しい分析へ
+        if (next) {
+          mode = "startup";
+          drawStartupLogo();
+          location.reload();
+        } else {
+          // ★ Cancelを選択した場合：タブ切り替えがあった場合のみ警告
+          if (dialogInterrupted2) {
+            alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
+            document.getElementById("keyHint").style.display = "block";
+            return;
+          }
+
+          // ★ 正常にCancelを選択した場合はプログラムを閉じる
+          window.close();
+        }
+      }, 50);
     }
-  }
+  }, 50);
 });
 
   /* ====== 座標変換 ====== */
