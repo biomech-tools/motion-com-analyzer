@@ -1650,10 +1650,78 @@ finishBtn.addEventListener("click", () => {
   // ★ 解析終了なので keyHint を隠す
   document.getElementById("keyHint").style.display = "none";
 
-  const saveRaw = true;
-  const saveFiltered = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
+  // ★ ダイアログ表示中のタブ切り替え・フォーカス喪失を検出
+  let dialogInterrupted = false;
+  const visibilityChangeHandler = () => {
+    if (document.hidden) {
+      dialogInterrupted = true;
+    }
+  };
+  const blurHandler = () => {
+    dialogInterrupted = true;
+  };
 
-  runSaveProcess(saveRaw, saveFiltered);
+  document.addEventListener("visibilitychange", visibilityChangeHandler);
+  window.addEventListener("blur", blurHandler);
+
+  // ★ ダイアログ表示前の時刻を記録
+  const dialogStartTime = Date.now();
+  const shouldSave = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
+  const dialogEndTime = Date.now();
+
+  // ★ イベントリスナーを解除
+  document.removeEventListener("visibilitychange", visibilityChangeHandler);
+  window.removeEventListener("blur", blurHandler);
+
+  // ★ ダイアログが100ms未満で閉じられた場合、またはタブ切り替え/フォーカス喪失があった場合は、意図しないキャンセルの可能性
+  const dialogDuration = dialogEndTime - dialogStartTime;
+  if ((dialogDuration < 100 || dialogInterrupted) && !shouldSave) {
+    alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
+    document.getElementById("keyHint").style.display = "block";
+    return;
+  }
+
+  if (shouldSave) {
+    const saveRaw = true;
+    const saveFiltered = true;
+    runSaveProcess(saveRaw, saveFiltered);
+  } else {
+    // ★ 2つ目のダイアログでも同様の保護を追加
+    let dialogInterrupted2 = false;
+    const visibilityChangeHandler2 = () => {
+      if (document.hidden) {
+        dialogInterrupted2 = true;
+      }
+    };
+    const blurHandler2 = () => {
+      dialogInterrupted2 = true;
+    };
+
+    document.addEventListener("visibilitychange", visibilityChangeHandler2);
+    window.addEventListener("blur", blurHandler2);
+
+    const dialog2StartTime = Date.now();
+    const next = confirm("Proceed New Analysis?\nCancel = Close Program");
+    const dialog2EndTime = Date.now();
+
+    document.removeEventListener("visibilitychange", visibilityChangeHandler2);
+    window.removeEventListener("blur", blurHandler2);
+
+    const dialog2Duration = dialog2EndTime - dialog2StartTime;
+    if ((dialog2Duration < 100 || dialogInterrupted2) && !next) {
+      alert("The dialog box closed unexpectedly. Please click \"Finish & Save data\" again.");
+      document.getElementById("keyHint").style.display = "block";
+      return;
+    }
+
+    if (next) {
+      mode = "startup";
+      drawStartupLogo();
+      location.reload();
+    } else {
+      window.close();
+    }
+  }
 });
 
   /* ====== 座標変換 ====== */
