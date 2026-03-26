@@ -164,10 +164,10 @@
       Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame.
     </div>
 
-    <button id="flipButton">Flip Movie</button>
+    <button id="flipButton">Flip movie</button>
 
     <div id="analysisButtons">
-      <button id="startAnalysisBtn">Start Analysis</button>
+      <button id="startAnalysisBtn">Start analysis</button>
       <button id="finishBtn">Finish & Save data</button>
     </div>
   </div>
@@ -176,7 +176,7 @@
     <div id="frameDisplay">Frame No. <span id="frameNumber">-</span></div>
 
     <div class="event-panel">
-      <h3>Record Events</h3>
+      <h3>Record events</h3>
 
       <div class="event-row">
         <button style="height: 30px; padding: 0 15px; font-size: 15px;">A</button>
@@ -343,7 +343,7 @@ video.addEventListener("loadedmetadata", async () => {
     `Use the <span style="color:red; font-weight:bold;">scroll bar</span> to move forward or backward through the movie frames.`
   );
 
-  message.textContent = "Horizontal Adjustment: Click the first point.";
+  message.textContent = "Horizontal adjustment: Click the first point.";
 });
 
   function resizeCanvasToFit() {
@@ -750,7 +750,7 @@ if (mode === "analysis") {
       horizontalPoints.push({ x, y });
 
       if (horizontalPoints.length === 1) {
-        message.textContent = "Horizontal Adjustment: Click the second point.";
+        message.textContent = "Horizontal adjustment: Click the second point.";
         redrawAll();
         return;
       }
@@ -803,7 +803,7 @@ if (mode === "analysis") {
             calibrationScale = 1;
 
             mode = "horizontal";
-            message.textContent = "Horizontal Adjustment: Click the first point.";
+            message.textContent = "Horizontal adjustment: Click the first point.";
             showInstruction("Use the scroll bar to move through frames.");
             document.getElementById("flipButton").style.display = "block";
 
@@ -855,7 +855,7 @@ if (mode === "analysis") {
             calibrationScale = 1;
 
             mode = "horizontal";
-            message.textContent = "Horizontal Adjustment: Click the first point.";
+            message.textContent = "Horizontal adjustment: Click the first point.";
             showInstruction("Use the scroll bar to move through frames.");
             document.getElementById("flipButton").style.display = "block";
 
@@ -918,7 +918,7 @@ if (mode === "analysis") {
           }
 
           mode = "ready";
-          message.textContent = "Analysis Ready: Press Start Analysis.";
+          message.textContent = "Analysis is ready: Click \"Start analysis\".";
 
           showInstruction(
             `Use the <span style="color:red; font-weight:bold;">scroll bar</span> or <span style="color:red; font-weight:bold;">arrow keys</span> to move through frames.`
@@ -1683,7 +1683,7 @@ startAnalysisBtn.addEventListener("click", async () => {
 
     // mode を ready に戻す（スクロールバーと矢印キー操作可能）
     mode = "ready";
-    message.textContent = "Analysis Ready: Press Start Analysis.";
+    message.textContent = "Analysis is ready: Press \"Start analysis\".";
 
     // 操作可能メッセージを表示
     showInstruction(
