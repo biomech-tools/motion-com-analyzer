@@ -281,6 +281,7 @@ window.addEventListener("load", () => {
   const extractedFrames = [];
 
   let eventLogs = [];
+  let frameSkip = 0;
 
   const KP_DEF = [
     { id: 4,  name: "R-Ear",      side: "R" },
@@ -659,7 +660,8 @@ function redrawAll() {
 
   drawCurrentFrame();
 
-  if (mode !== "analysis") {
+  // ★ 解析中と完了後は水平補正・キャリブレーションマークを表示しない
+  if (mode !== "analysis" && mode !== "done") {
     drawHorizontalPoints();
     drawCalibrationPoints();
   }
@@ -709,8 +711,16 @@ function redrawAll() {
 
   async function processNextFrame() {
     if (currentFrame >= totalFrames) {
-      message.textContent = "Analysis complete.";
+      // ★ 最後のフレームに達したら自動的に保存処理へ
+      message.textContent = "Analysis complete. Preparing to save data...";
       mode = "done";
+
+      // 保存ボタンをクリックした時と同じ処理を実行
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const finishButton = document.getElementById("finishButton");
+      if (finishButton) {
+        finishButton.click();
+      }
       return;
     }
 
@@ -899,6 +909,64 @@ if (mode === "analysis") {
             }
           }
 
+          // ★ フレームスキップ設定ダイアログ
+          let skipDialogInterrupted = false;
+          const skipVisibilityHandler = () => {
+            if (document.hidden) {
+              skipDialogInterrupted = true;
+            }
+          };
+
+          document.addEventListener("visibilitychange", skipVisibilityHandler);
+
+          let skipValid = false;
+          while (!skipValid) {
+            let skipChoice = prompt(
+              "How many frames should be skipped during analysis?\nInput a value between 0 and 2.\nCancel = default (0)",
+              "0"
+            );
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            if (skipDialogInterrupted) {
+              alert("Retry horizontal adjustment and calibration again.");
+
+              document.removeEventListener("visibilitychange", skipVisibilityHandler);
+
+              horizontalPoints = [];
+              calibrationPoints = [];
+              rotationAngle = 0;
+              calibrationScale = 1;
+
+              mode = "horizontal";
+              message.textContent = "Horizontal adjustment: Click the first point.";
+              showInstruction("Use the scroll bar to move through frames.");
+              document.getElementById("flipButton").style.display = "block";
+
+              const currentTime = video.currentTime;
+              frameSlider.value = currentTime;
+
+              drawCurrentFrame();
+              redrawAll();
+              return;
+            }
+
+            if (skipChoice === null || skipChoice.trim() === "") {
+              frameSkip = 0;
+              skipValid = true;
+            } else {
+              const skipNum = parseInt(skipChoice.trim(), 10);
+              if (skipNum >= 0 && skipNum <= 2) {
+                frameSkip = skipNum;
+                skipValid = true;
+              } else {
+                alert("Make sure to input a value between 0 and 2.");
+              }
+            }
+          }
+
+          document.removeEventListener("visibilitychange", skipVisibilityHandler);
+
           // ★ 現在の video.currentTime から正しいフレーム番号を計算
           if (frameTimestamps.length > 0) {
             const currentTime = video.currentTime;
@@ -1011,7 +1079,27 @@ if (
     if (e.key === "Enter") {
       if (mode !== "analysis") return;
 
-      currentFrame++;
+      // ★ 次のフレームを計算
+      const nextFrame = currentFrame + (1 + frameSkip);
+
+      // ★ 次のフレームが動画の範囲を超える場合は自動的に保存処理へ
+      if (nextFrame >= totalFrames) {
+        message.textContent = "Analysis complete. Preparing to save data...";
+        mode = "done";
+
+        // 水平補正とキャリブレーションのマークを消すために再描画
+        redrawAll();
+
+        // 保存ボタンをクリックした時と同じ処理を実行
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const finishButton = document.getElementById("finishBtn");
+        if (finishButton) {
+          finishButton.click();
+        }
+        return;
+      }
+
+      currentFrame = nextFrame;
       await processNextFrame();
       return;
     }
@@ -1020,7 +1108,8 @@ if (
       if (mode !== "analysis") return;
       if (currentFrame <= 0) return;
 
-      currentFrame--;
+      currentFrame -= (1 + frameSkip);
+      if (currentFrame < 0) currentFrame = 0;
       await seekToFrame(currentFrame);
       drawCurrentFrame();
       await runPoseEstimationOnCurrentFrame();
@@ -1291,16 +1380,23 @@ function drawStartupLogo() {
      ============================================================ */
   function runSaveProcess(saveRaw, saveFiltered) {
 
-    /* ---------- 1. 前処理：frameData のトリミング ---------- */
-    let firstValidIndex = 0;
+    /* ---------- 1. 前処理：解析済みフレームのみを抽出 ---------- */
+    // ★ スキップされたフレーム（空データ）を完全に除外し、解析されたフレームのみを抽出
+    const analyzedFrames = [];
     for (let i = 0; i < frameData.length; i++) {
       const jf = frameData[i];
       if (jf && jf.length > 0) {
-        firstValidIndex = i;
-        break;
+        analyzedFrames.push({
+          frameNumber: i,  // 元のフレーム番号を保持
+          joints: jf
+        });
       }
     }
-    const trimmedFrameData = frameData.slice(firstValidIndex);
+
+    if (analyzedFrames.length === 0) {
+      alert("No analyzed frames found.");
+      return;
+    }
 
     let baselineY = 0;
     if (horizontalPoints.length >= 2) {
@@ -1308,7 +1404,11 @@ function drawStartupLogo() {
     }
     const scale = calibrationScale || 1.0;
 
-    /* ---------- 2. Raw データ生成（AoA形式） ---------- */
+    function fmt(v) {
+      return (v == null) ? null : Number(v.toFixed(3));
+    }
+
+    /* ---------- 2. Raw データ生成（解析済みフレームのみ） ---------- */
     const header = [
       "Frame No.","Time (s)","COM-X (m)","COM-Y (m)",
       "R-Ear-X (m)","R-Ear-Y (m)","L-Ear-X (m)","L-Ear-Y (m)",
@@ -1324,24 +1424,21 @@ function drawStartupLogo() {
     const rowsRaw = [];
     rowsRaw.push(header);
 
+    // ★ フィルター処理用の時系列データ（解析済みフレームのみ）
     const seriesMap = {};
     KP_DEF.forEach(def => {
       seriesMap[def.name] = { x: [], y: [] };
     });
 
-    for (let f = 0; f < trimmedFrameData.length; f++) {
-      const jointsFrame = trimmedFrameData[f];
-
-      if (!jointsFrame || jointsFrame.length === 0) {
-        KP_DEF.forEach(def => {
-          seriesMap[def.name].x.push(null);
-          seriesMap[def.name].y.push(null);
-        });
-        continue;
-      }
+    // ★ 解析済みフレームを順番に処理
+    for (let i = 0; i < analyzedFrames.length; i++) {
+      const frameInfo = analyzedFrames[i];
+      const jointsFrame = frameInfo.joints;
+      const originalFrameNumber = frameInfo.frameNumber;
 
       const hasEstimated = jointsFrame.some(j => j.estimated);
 
+      // COM計算
       let sumX = 0, sumY = 0, count = 0;
       jointsFrame.forEach(j => {
         if (!j.estimated && j.x != null && j.y != null) {
@@ -1355,6 +1452,7 @@ function drawStartupLogo() {
       const comX = (count > 0) ? (sumX / count) : null;
       const comY = (count > 0) ? (sumY / count) : null;
 
+      // 関節座標変換
       function getJoint(defName) {
         return jointsFrame.find(j => j.part === defName) || null;
       }
@@ -1371,49 +1469,45 @@ function drawStartupLogo() {
         jointConv[def.name] = conv(getJoint(def.name));
       });
 
+      // フィルター用データに追加
       KP_DEF.forEach(def => {
         const p = jointConv[def.name];
         seriesMap[def.name].x.push(p.x);
         seriesMap[def.name].y.push(p.y);
       });
 
-function fmt(v) {
-  return (v == null) ? null : Number(v.toFixed(3));
-}
+      // Raw行データ作成
+      const timeSec = originalFrameNumber / fps;
 
+      const row = [
+        originalFrameNumber + 1,
+        Number(timeSec.toFixed(3)),
+        hasEstimated ? null : fmt(comX),
+        hasEstimated ? null : fmt(comY),
 
-      const timeSec = f / fps;
+        fmt(jointConv["R-Ear"].x), fmt(jointConv["R-Ear"].y),
+        fmt(jointConv["L-Ear"].x), fmt(jointConv["L-Ear"].y),
 
-const row = [
-  f + 1,                                 // 数値のまま
-  Number(timeSec.toFixed(3)),            // 数値に戻す
-  hasEstimated ? null : fmt(comX),       // "" ではなく null の方が安全
-  hasEstimated ? null : fmt(comY),
+        fmt(jointConv["R-Shoulder"].x), fmt(jointConv["R-Shoulder"].y),
+        fmt(jointConv["L-Shoulder"].x), fmt(jointConv["L-Shoulder"].y),
 
-  fmt(jointConv["R-Ear"].x), fmt(jointConv["R-Ear"].y),
-  fmt(jointConv["L-Ear"].x), fmt(jointConv["L-Ear"].y),
+        fmt(jointConv["R-Elbow"].x), fmt(jointConv["R-Elbow"].y),
+        fmt(jointConv["L-Elbow"].x), fmt(jointConv["L-Elbow"].y),
 
-  fmt(jointConv["R-Shoulder"].x), fmt(jointConv["R-Shoulder"].y),
-  fmt(jointConv["L-Shoulder"].x), fmt(jointConv["L-Shoulder"].y),
+        fmt(jointConv["R-Wrist"].x), fmt(jointConv["R-Wrist"].y),
+        fmt(jointConv["L-Wrist"].x), fmt(jointConv["L-Wrist"].y),
 
-  fmt(jointConv["R-Elbow"].x), fmt(jointConv["R-Elbow"].y),
-  fmt(jointConv["L-Elbow"].x), fmt(jointConv["L-Elbow"].y),
+        fmt(jointConv["R-Hip"].x), fmt(jointConv["R-Hip"].y),
+        fmt(jointConv["L-Hip"].x), fmt(jointConv["L-Hip"].y),
 
-  fmt(jointConv["R-Wrist"].x), fmt(jointConv["R-Wrist"].y),
-  fmt(jointConv["L-Wrist"].x), fmt(jointConv["L-Wrist"].y),
+        fmt(jointConv["R-Knee"].x), fmt(jointConv["R-Knee"].y),
+        fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
 
-  fmt(jointConv["R-Hip"].x), fmt(jointConv["R-Hip"].y),
-  fmt(jointConv["L-Hip"].x), fmt(jointConv["L-Hip"].y),
+        fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
+        fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y),
 
-  fmt(jointConv["R-Knee"].x), fmt(jointConv["R-Knee"].y),
-  fmt(jointConv["L-Knee"].x), fmt(jointConv["L-Knee"].y),
-
-  fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
-  fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y),
-
-  (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
-];
-
+        (eventLogs.find(e => e.frame === originalFrameNumber)?.label || "")
+      ];
 
       rowsRaw.push(row);
     }
@@ -1421,16 +1515,17 @@ const row = [
   /* ===== Part 3 続く ===== */
 
     /* ---------- 3. Filtered の可否判定 ---------- */
+    // ★ 解析済みフレームで未抽出座標があるかチェック
     let hasMissing = false;
-    KP_DEF.forEach(def => {
-      const arrX = seriesMap[def.name].x;
-      const arrY = seriesMap[def.name].y;
-      if (arrX.some(v => v == null) || arrY.some(v => v == null)) {
+    for (let i = 0; i < analyzedFrames.length; i++) {
+      const jointsFrame = analyzedFrames[i].joints;
+      if (jointsFrame.some(j => j.estimated)) {
         hasMissing = true;
+        break;
       }
-    });
+    }
 
-    const tooFewFrames = trimmedFrameData.length < 20;
+    const tooFewFrames = analyzedFrames.length < 20;
 
     let allowFiltered = saveFiltered;
     let msg = "";
@@ -1446,13 +1541,14 @@ const row = [
       msg = "Only the raw-data was saved because the analysis included unextracted coordinates. Also, the number of frames is too less (no less than 20).";
     }
 
-    /* ---------- 4. Filtered データ生成 ---------- */
+    /* ---------- 4. Filtered データ生成（解析済みフレームのみ） ---------- */
     let rowsFiltered = null;
 
     if (allowFiltered) {
       const filteredMap = {};
       const cfMap = {};
 
+      // ★ 解析済みフレームの時系列データに対してフィルター処理
       KP_DEF.forEach(def => {
         const name = def.name;
         const sx = seriesMap[name].x;
@@ -1474,11 +1570,15 @@ const row = [
       rowsFiltered = [];
       rowsFiltered.push(header);
 
-      for (let f = 0; f < trimmedFrameData.length; f++) {
+      // ★ 解析済みフレームのみを出力
+      for (let i = 0; i < analyzedFrames.length; i++) {
+        const originalFrameNumber = analyzedFrames[i].frameNumber;
+
+        // COM計算（フィルター後）
         let sumX = 0, sumY = 0, count = 0;
         KP_DEF.forEach(def => {
-          const x = filteredMap[def.name].x[f];
-          const y = filteredMap[def.name].y[f];
+          const x = filteredMap[def.name].x[i];
+          const y = filteredMap[def.name].y[i];
           if (x != null && y != null) {
             sumX += x;
             sumY += y;
@@ -1488,44 +1588,41 @@ const row = [
         const comXf = (count > 0) ? (sumX / count) : null;
         const comYf = (count > 0) ? (sumY / count) : null;
 
-function fmt(v) {
-  return (v == null) ? null : Number(v.toFixed(3));
-}
+        const timeSec = originalFrameNumber / fps;
 
+        // ★ 端点4フレームは出力しない（フィルター処理の境界効果）
+        const blank = (i < 4 || i >= analyzedFrames.length - 4);
 
-        const timeSec = f / fps;
-        const blank = (f < 4 || f >= trimmedFrameData.length - 4);
+        const row = [
+          originalFrameNumber + 1,
+          Number(timeSec.toFixed(3)),
 
-const row = [
-  f + 1,                                   // 数値のまま
-  Number(timeSec.toFixed(3)),              // 数値に戻す
+          blank ? null : fmt(comXf),
+          blank ? null : fmt(comYf),
 
-  blank ? null : fmt(comXf),               // "" ではなく null
-  blank ? null : fmt(comYf),
+          blank ? null : fmt(filteredMap["R-Ear"].x[i]), blank ? null : fmt(filteredMap["R-Ear"].y[i]),
+          blank ? null : fmt(filteredMap["L-Ear"].x[i]), blank ? null : fmt(filteredMap["L-Ear"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Ear"].x[f]), blank ? null : fmt(filteredMap["R-Ear"].y[f]),
-  blank ? null : fmt(filteredMap["L-Ear"].x[f]), blank ? null : fmt(filteredMap["L-Ear"].y[f]),
+          blank ? null : fmt(filteredMap["R-Shoulder"].x[i]), blank ? null : fmt(filteredMap["R-Shoulder"].y[i]),
+          blank ? null : fmt(filteredMap["L-Shoulder"].x[i]), blank ? null : fmt(filteredMap["L-Shoulder"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Shoulder"].x[f]), blank ? null : fmt(filteredMap["R-Shoulder"].y[f]),
-  blank ? null : fmt(filteredMap["L-Shoulder"].x[f]), blank ? null : fmt(filteredMap["L-Shoulder"].y[f]),
+          blank ? null : fmt(filteredMap["R-Elbow"].x[i]), blank ? null : fmt(filteredMap["R-Elbow"].y[i]),
+          blank ? null : fmt(filteredMap["L-Elbow"].x[i]), blank ? null : fmt(filteredMap["L-Elbow"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Elbow"].x[f]), blank ? null : fmt(filteredMap["R-Elbow"].y[f]),
-  blank ? null : fmt(filteredMap["L-Elbow"].x[f]), blank ? null : fmt(filteredMap["L-Elbow"].y[f]),
+          blank ? null : fmt(filteredMap["R-Wrist"].x[i]), blank ? null : fmt(filteredMap["R-Wrist"].y[i]),
+          blank ? null : fmt(filteredMap["L-Wrist"].x[i]), blank ? null : fmt(filteredMap["L-Wrist"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Wrist"].x[f]), blank ? null : fmt(filteredMap["R-Wrist"].y[f]),
-  blank ? null : fmt(filteredMap["L-Wrist"].x[f]), blank ? null : fmt(filteredMap["L-Wrist"].y[f]),
+          blank ? null : fmt(filteredMap["R-Hip"].x[i]), blank ? null : fmt(filteredMap["R-Hip"].y[i]),
+          blank ? null : fmt(filteredMap["L-Hip"].x[i]), blank ? null : fmt(filteredMap["L-Hip"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Hip"].x[f]), blank ? null : fmt(filteredMap["R-Hip"].y[f]),
-  blank ? null : fmt(filteredMap["L-Hip"].x[f]), blank ? null : fmt(filteredMap["L-Hip"].y[f]),
+          blank ? null : fmt(filteredMap["R-Knee"].x[i]), blank ? null : fmt(filteredMap["R-Knee"].y[i]),
+          blank ? null : fmt(filteredMap["L-Knee"].x[i]), blank ? null : fmt(filteredMap["L-Knee"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Knee"].x[f]), blank ? null : fmt(filteredMap["R-Knee"].y[f]),
-  blank ? null : fmt(filteredMap["L-Knee"].x[f]), blank ? null : fmt(filteredMap["L-Knee"].y[f]),
+          blank ? null : fmt(filteredMap["R-Ankle"].x[i]), blank ? null : fmt(filteredMap["R-Ankle"].y[i]),
+          blank ? null : fmt(filteredMap["L-Ankle"].x[i]), blank ? null : fmt(filteredMap["L-Ankle"].y[i]),
 
-  blank ? null : fmt(filteredMap["R-Ankle"].x[f]), blank ? null : fmt(filteredMap["R-Ankle"].y[f]),
-  blank ? null : fmt(filteredMap["L-Ankle"].x[f]), blank ? null : fmt(filteredMap["L-Ankle"].y[f]),
-
-  (eventLogs.find(e => e.frame === f + firstValidIndex)?.label || "")
-];
+          (eventLogs.find(e => e.frame === originalFrameNumber)?.label || "")
+        ];
 
         rowsFiltered.push(row);
       }
@@ -1701,8 +1798,16 @@ startAnalysisBtn.addEventListener("click", async () => {
   // まず以前のメッセージを消す
   showInstruction("");
 
-  // keyHint（Enter / Esc の説明）を表示
-  document.getElementById("keyHint").style.display = "block";
+  // keyHint（Enter / Esc の説明）を更新して表示
+  const keyHintDiv = document.getElementById("keyHint");
+  if (frameSkip === 0) {
+    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame.';
+  } else if (frameSkip === 1) {
+    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance by skipping one frame. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind by skipping one frame.';
+  } else {
+    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance by skipping two frames. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind by skipping two frames.';
+  }
+  keyHintDiv.style.display = "block";
 
   frameData = [];
 
@@ -1714,7 +1819,8 @@ startAnalysisBtn.addEventListener("click", async () => {
 
 const finishBtn = document.getElementById("finishBtn");
 finishBtn.addEventListener("click", () => {
-  if (mode !== "analysis") {
+  // ★ 解析中または完了後のみ許可（"done"モードも許可）
+  if (mode !== "analysis" && mode !== "done") {
     alert("Analysis has not started yet.");
     return;
   }
