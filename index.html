@@ -686,7 +686,10 @@ function redrawAll() {
         if (!done && video.readyState >= 2) {
           done = true;
           video.removeEventListener("seeked", handler);
-          resolve();
+          // ★ seekedイベント後も少し待機してビデオフレームが完全に準備されるのを待つ
+          setTimeout(() => {
+            resolve();
+          }, 100);
         }
       };
 
@@ -699,17 +702,19 @@ function redrawAll() {
       }
       video.pause();
 
+      // ★ タイムアウトを2000msに延長
       setTimeout(() => {
         if (!done) {
           done = true;
           video.removeEventListener("seeked", handler);
           resolve();
         }
-      }, 500);
+      }, 2000);
     });
   }
 
-  async function processNextFrame() {
+  async function processCurrentFrame() {
+    // ★ 現在のフレームで解析を実行（シークは呼び出し元で実行済み）
     if (currentFrame >= totalFrames) {
       // ★ 最後のフレームに達したら自動的に保存処理へ
       message.textContent = "Analysis complete. Preparing to save data...";
@@ -717,14 +722,12 @@ function redrawAll() {
 
       // 保存ボタンをクリックした時と同じ処理を実行
       await new Promise(resolve => setTimeout(resolve, 100));
-      const finishButton = document.getElementById("finishButton");
+      const finishButton = document.getElementById("finishBtn");
       if (finishButton) {
         finishButton.click();
       }
       return;
     }
-
-    await seekToFrame(currentFrame);
 
     // ビデオが確実に準備できるまで待機
     let retries = 0;
@@ -739,11 +742,11 @@ function redrawAll() {
 
     frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
 
-if (mode === "analysis") {
-  frameNumberSpan.textContent = currentFrame + 1;
-} else {
-  frameNumberSpan.textContent = "–";
-}
+    if (mode === "analysis") {
+      frameNumberSpan.textContent = currentFrame + 1;
+    } else {
+      frameNumberSpan.textContent = "–";
+    }
   }
 
   /* ===== Part 1 End ===== */
@@ -1100,7 +1103,8 @@ if (
       }
 
       currentFrame = nextFrame;
-      await processNextFrame();
+      await seekToFrame(currentFrame);
+      await processCurrentFrame();
       return;
     }
 
@@ -1111,14 +1115,7 @@ if (
       currentFrame -= (1 + frameSkip);
       if (currentFrame < 0) currentFrame = 0;
       await seekToFrame(currentFrame);
-      drawCurrentFrame();
-      await runPoseEstimationOnCurrentFrame();
-      redrawAll();
-if (mode === "analysis") {
-  frameNumberSpan.textContent = currentFrame + 1;
-} else {
-  frameNumberSpan.textContent = "–";
-}
+      await processCurrentFrame();
 
       if (frameTimestamps.length > 0 && currentFrame < frameTimestamps.length) {
         frameSlider.value = frameTimestamps[currentFrame];
@@ -1133,7 +1130,11 @@ if (e.key === "ArrowRight") {
 
   if (currentFrame >= totalFrames - 1) return;
 
-  currentFrame++;
+  // ★ スキップフレーム設定に従って移動
+  currentFrame += (1 + frameSkip);
+  if (currentFrame >= totalFrames) {
+    currentFrame = totalFrames - 1;
+  }
 
   // ★ frameTimestampsを使ってフレーム移動（解析中・保存準備中と完全に同じ方式）
   await seekToFrame(currentFrame);
@@ -1148,7 +1149,11 @@ if (e.key === "ArrowLeft") {
 
   if (currentFrame <= 0) return;
 
-  currentFrame--;
+  // ★ スキップフレーム設定に従って移動
+  currentFrame -= (1 + frameSkip);
+  if (currentFrame < 0) {
+    currentFrame = 0;
+  }
 
   // ★ frameTimestampsを使ってフレーム移動（解析中・保存準備中と完全に同じ方式）
   await seekToFrame(currentFrame);
@@ -1191,9 +1196,31 @@ frameSlider.addEventListener("input", async () => {
           closestFrame = i;
         }
       }
+
+      // ★ スキップフレーム設定がある場合は、その倍数に丸める
+      if (frameSkip > 0) {
+        const step = 1 + frameSkip;
+        closestFrame = Math.round(closestFrame / step) * step;
+        if (closestFrame >= frameTimestamps.length) {
+          closestFrame = frameTimestamps.length - 1;
+        }
+      }
+
       currentFrame = closestFrame;
+
+      // ★ 丸めた結果に合わせてビデオを再シーク
+      await seekToFrame(currentFrame);
     } else {
       currentFrame = Math.round(t * fps);
+
+      // ★ スキップフレーム設定がある場合は、その倍数に丸める
+      if (frameSkip > 0) {
+        const step = 1 + frameSkip;
+        currentFrame = Math.round(currentFrame / step) * step;
+        if (currentFrame >= totalFrames) {
+          currentFrame = totalFrames - 1;
+        }
+      }
     }
   }
 
@@ -1749,30 +1776,72 @@ startAnalysisBtn.addEventListener("click", async () => {
 
   startAnalysisBtn.blur();
 
-  // ★ ビデオの現在時刻からフレーム番号を計算
-  const currentTime = video.currentTime;
+  // ★ currentFrame変数には既にユーザーが選択したフレーム番号が入っているので、
+  // video.currentTimeから再計算せず、currentFrame変数の値をそのまま使用
+  // （スクロールバーや矢印キーで移動した時に正しく設定されている）
 
-  // frameTimestampsがある場合はそれを使用、ない場合はfpsから計算
-  if (frameTimestamps.length > 0) {
-    // 現在の時刻に最も近いフレームを探す
-    let closestFrame = 0;
-    let minDiff = Math.abs(frameTimestamps[0] - currentTime);
+  // ★ 念のため範囲チェック
+  if (currentFrame >= totalFrames) {
+    currentFrame = totalFrames - 1;
+  }
+  if (currentFrame < 0) {
+    currentFrame = 0;
+  }
 
-    for (let i = 1; i < frameTimestamps.length; i++) {
-      const diff = Math.abs(frameTimestamps[i] - currentTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestFrame = i;
-      }
-    }
-    currentFrame = closestFrame;
+  // ★ ビデオを指定されたフレームに確実にシーク（複数回実行で確実性を高める）
+  await seekToFrame(currentFrame);
+
+  // ★ ビデオが完全に準備できるまで待機
+  let retries = 0;
+  while (video.readyState < 2 && retries < 10) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    retries++;
+  }
+
+  // ★ 少し待機してからもう一度シーク
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await seekToFrame(currentFrame);
+
+  // ★ さらに少し待機
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // ★ 最後にもう一度シークして、確実に目的のフレームに位置する
+  await seekToFrame(currentFrame);
+
+  // ★ 最終確認：ビデオが準備できるまで待機
+  retries = 0;
+  while (video.readyState < 2 && retries < 10) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    retries++;
+  }
+
+  // ★ デバッグ用：解析を開始するフレーム番号を出力
+  console.log("=== 解析開始 ===");
+  console.log("指定フレーム:", currentFrame + 1, "/ ビデオ時刻:", video.currentTime.toFixed(3));
+
+  // ★ 期待される時刻を計算
+  let expectedTime;
+  if (frameTimestamps.length > 0 && currentFrame < frameTimestamps.length) {
+    expectedTime = frameTimestamps[currentFrame];
   } else {
-    currentFrame = Math.round(currentTime * fps);
+    expectedTime = currentFrame * frameDuration;
+  }
+  console.log("期待時刻:", expectedTime.toFixed(3), "/ 差:", Math.abs(video.currentTime - expectedTime).toFixed(3), "秒");
+
+  // ★ ビデオの時刻が期待値から大きくずれている場合は、もう一度シーク
+  const timeDiff = Math.abs(video.currentTime - expectedTime);
+  if (timeDiff > frameDuration * 0.5) {
+    console.log("時刻のずれが大きいため、再度シークします...");
+    await seekToFrame(currentFrame);
+    await new Promise(resolve => setTimeout(resolve, 200));
+    console.log("再シーク後のビデオ時刻:", video.currentTime.toFixed(3));
   }
 
   // 現在のフレームで解析を試行
   drawCurrentFrame();
   const poseDetected = await runPoseEstimationOnCurrentFrame();
+
+  console.log("ポーズ検出:", poseDetected);
 
   // ★ 人が検出されなかった場合の処理
   if (!poseDetected) {
