@@ -161,7 +161,7 @@
 
     <div id="keyHint" style="margin-top:6px; font-size:14px; line-height:1.4; display: none;">
       Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame.
-      Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame.
+      Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame. [Shift + Click = Custom point (CP)]
     </div>
 
     <button id="flipButton">Flip movie</button>
@@ -1952,11 +1952,11 @@ startAnalysisBtn.addEventListener("click", async () => {
   // keyHint（Enter / Esc の説明）を更新して表示
   const keyHintDiv = document.getElementById("keyHint");
   if (frameSkip === 0) {
-    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame.';
+    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance one frame. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind one frame. [Shift + Click = Custom point (CP)]';
   } else if (frameSkip === 1) {
-    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance by skipping one frame. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind by skipping one frame.';
+    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance by skipping one frame. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind by skipping one frame. [Shift + Click = Custom point (CP)]';
   } else {
-    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance by skipping two frames. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind by skipping two frames.';
+    keyHintDiv.innerHTML = 'Press <span style="color: red; font-weight: bold;">Enter</span> to advance by skipping two frames. Press <span style="color: red; font-weight: bold;">Esc</span> to rewind by skipping two frames. [Shift + Click = Custom point (CP)]';
   }
   keyHintDiv.style.display = "block";
 
