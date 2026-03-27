@@ -1680,13 +1680,7 @@ cfRow.push(Math.round(cfMap[name].y));
 
     XLSX.writeFile(wb, baseFilename + ".xlsx");
 
-    if (saveRaw && allowFiltered) {
-      alert("Raw- and filtered data were saved completely (Excel file).");
-    } else if (saveRaw && !allowFiltered && msg) {
-      alert(msg);
-    }
-
-    // ★ ダイアログ表示中のタブ切り替え・フォーカス喪失を検出
+    // ★ ダイアログ表示中のタブ切り替え・フォーカス喪失を検出（alert表示前から監視開始）
     let dialogInterrupted = false;
     const visibilityChangeHandler = () => {
       if (document.hidden) {
@@ -1700,9 +1694,15 @@ cfRow.push(Math.round(cfMap[name].y));
     document.addEventListener("visibilitychange", visibilityChangeHandler);
     window.addEventListener("blur", blurHandler);
 
+    if (saveRaw && allowFiltered) {
+      alert("Raw- and filtered data were saved completely (Excel file).\n\n(Don't switch to a different browser.)");
+    } else if (saveRaw && !allowFiltered && msg) {
+      alert(msg + "\n\n(Don't switch to a different browser.)");
+    }
+
     // ★ ダイアログ表示前の時刻を記録
     const dialogStartTime = Date.now();
-    const next = confirm("Proceed new analysis?\nCancel = Close program");
+    const next = confirm("Proceed new analysis?\nCancel = Close program\n\n(Don't switch to a different browser.)");
     const dialogEndTime = Date.now();
 
     // ★ イベントリスナーを解除
@@ -1841,7 +1841,7 @@ finishBtn.addEventListener("click", () => {
 
   // ★ ダイアログ表示前の時刻を記録
   const dialogStartTime = Date.now();
-  const shouldSave = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No");
+  const shouldSave = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No\n\n(Don't switch to a different browser.)");
   const dialogEndTime = Date.now();
 
   // ★ イベントをキャプチャする時間を確保してから判定
