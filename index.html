@@ -282,6 +282,7 @@ window.addEventListener("load", () => {
 
   let eventLogs = [];
   let frameSkip = 0;
+  let customPoint = null;  // CP (Custom Point) - 各フレームに1点のみ
 
   const KP_DEF = [
     { id: 4,  name: "R-Ear",      side: "R" },
@@ -502,6 +503,14 @@ if (drawCOM) {
   ctx.stroke();
 }
 
+    }
+
+    // CP (Custom Point) の描画
+    if (customPoint && customPoint.x != null && customPoint.y != null) {
+      drawPlus(customPoint.x, customPoint.y, "blue", 10 * SCALE_UI);
+      ctx.font = `bold ${21 * SCALE_UI}px sans-serif`;
+      ctx.fillStyle = "blue";
+      ctx.fillText("CP", customPoint.x + 14 * SCALE_UI, customPoint.y + 4 * SCALE_UI);
     }
   }
 
@@ -738,9 +747,18 @@ function redrawAll() {
 
     drawCurrentFrame();
     await runPoseEstimationOnCurrentFrame();
+
+    // CPを前のフレームから引き継がない（毎フレームリセット）
+    customPoint = null;
+
     redrawAll();
 
-    frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+    // frameDataにjointsとcustomPointを保存する構造に変更
+    if (!frameData[currentFrame]) {
+      frameData[currentFrame] = {};
+    }
+    frameData[currentFrame].joints = JSON.parse(JSON.stringify(joints));
+    frameData[currentFrame].customPoint = null;
 
     if (mode === "analysis") {
       frameNumberSpan.textContent = currentFrame + 1;
@@ -1027,11 +1045,28 @@ function redrawAll() {
   });
 
   /* ====== ドラッグ補正 ====== */
+  let draggingCP = false;
+
   canvas.addEventListener("mousedown", (e) => {
     if (mode !== "analysis") return;
 
     const { x, y } = getCanvasCoordinates(e);
 
+    // Shift+クリックでCP配置
+    if (e.shiftKey) {
+      customPoint = { x, y };
+      draggingCP = true;
+      redrawAll();
+      return;
+    }
+
+    // CPをドラッグ開始
+    if (customPoint && Math.hypot(customPoint.x - x, customPoint.y - y) < 15 * SCALE_UI) {
+      draggingCP = true;
+      return;
+    }
+
+    // 関節点のドラッグ処理
     draggingIndex = null;
     joints.forEach((j, i) => {
       if (j.x != null && j.y != null) {
@@ -1044,9 +1079,18 @@ if (Math.hypot(j.x - x, j.y - y) < 15 * SCALE_UI) {
   });
 
   canvas.addEventListener("mousemove", (e) => {
-    if (draggingIndex === null) return;
-
     const { x, y } = getCanvasCoordinates(e);
+
+    // CPのドラッグ中
+    if (draggingCP && customPoint) {
+      customPoint.x = x;
+      customPoint.y = y;
+      redrawAll();
+      return;
+    }
+
+    // 関節点のドラッグ中
+    if (draggingIndex === null) return;
 
     joints[draggingIndex].x = x;
     joints[draggingIndex].y = y;
@@ -1057,10 +1101,16 @@ if (Math.hypot(j.x - x, j.y - y) < 15 * SCALE_UI) {
   });
 
   canvas.addEventListener("mouseup", () => {
-    if (draggingIndex !== null && mode === "analysis") {
-      frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+    if (mode === "analysis") {
+      if (draggingIndex !== null) {
+        if (!frameData[currentFrame]) {
+          frameData[currentFrame] = {};
+        }
+        frameData[currentFrame].joints = JSON.parse(JSON.stringify(joints));
+      }
     }
     draggingIndex = null;
+    draggingCP = false;
   });
 
   /* ===== Part 2 続く ===== */
@@ -1081,6 +1131,15 @@ if (
 
     if (e.key === "Enter") {
       if (mode !== "analysis") return;
+
+      // CPをframeDataに保存
+      if (!frameData[currentFrame]) {
+        frameData[currentFrame] = {};
+      }
+      if (!frameData[currentFrame].joints) {
+        frameData[currentFrame].joints = JSON.parse(JSON.stringify(joints));
+      }
+      frameData[currentFrame].customPoint = customPoint ? { x: customPoint.x, y: customPoint.y } : null;
 
       // ★ 次のフレームを計算
       const nextFrame = currentFrame + (1 + frameSkip);
@@ -1411,11 +1470,12 @@ function drawStartupLogo() {
     // ★ スキップされたフレーム（空データ）を完全に除外し、解析されたフレームのみを抽出
     const analyzedFrames = [];
     for (let i = 0; i < frameData.length; i++) {
-      const jf = frameData[i];
-      if (jf && jf.length > 0) {
+      const fd = frameData[i];
+      if (fd && fd.joints && fd.joints.length > 0) {
         analyzedFrames.push({
           frameNumber: i,  // 元のフレーム番号を保持
-          joints: jf
+          joints: fd.joints,
+          customPoint: fd.customPoint || null
         });
       }
     }
@@ -1445,7 +1505,8 @@ function drawStartupLogo() {
       "R-Hip-X (m)","R-Hip-Y (m)","L-Hip-X (m)","L-Hip-Y (m)",
       "R-Knee-X (m)","R-Knee-Y (m)","L-Knee-X (m)","L-Knee-Y (m)",
       "R-Ankle-X (m)","R-Ankle-Y (m)","L-Ankle-X (m)","L-Ankle-Y (m)",
-      "Event"
+      "CP-X (m)","CP-Y (m)",
+      "Events"
     ];
 
     const rowsRaw = [];
@@ -1503,6 +1564,14 @@ function drawStartupLogo() {
         seriesMap[def.name].y.push(p.y);
       });
 
+      // CP座標の変換
+      const cp = frameInfo.customPoint;
+      let cpX = null, cpY = null;
+      if (cp && cp.x != null && cp.y != null) {
+        cpX = cp.x * scale;
+        cpY = -(cp.y - baselineY) * scale;
+      }
+
       // Raw行データ作成
       const timeSec = originalFrameNumber / fps;
 
@@ -1532,6 +1601,8 @@ function drawStartupLogo() {
 
         fmt(jointConv["R-Ankle"].x), fmt(jointConv["R-Ankle"].y),
         fmt(jointConv["L-Ankle"].x), fmt(jointConv["L-Ankle"].y),
+
+        fmt(cpX), fmt(cpY),
 
         (eventLogs.find(e => e.frame === originalFrameNumber)?.label || "")
       ];
@@ -1620,6 +1691,15 @@ function drawStartupLogo() {
         // ★ 端点4フレームは出力しない（フィルター処理の境界効果）
         const blank = (i < 4 || i >= analyzedFrames.length - 4);
 
+        // CP座標（フィルター処理しない、Rawそのまま）
+        // ★ CPは端点4フレームでも表示する
+        const cp = analyzedFrames[i].customPoint;
+        let cpX = null, cpY = null;
+        if (cp && cp.x != null && cp.y != null) {
+          cpX = cp.x * scale;
+          cpY = -(cp.y - baselineY) * scale;
+        }
+
         const row = [
           originalFrameNumber + 1,
           Number(timeSec.toFixed(3)),
@@ -1647,6 +1727,8 @@ function drawStartupLogo() {
 
           blank ? null : fmt(filteredMap["R-Ankle"].x[i]), blank ? null : fmt(filteredMap["R-Ankle"].y[i]),
           blank ? null : fmt(filteredMap["L-Ankle"].x[i]), blank ? null : fmt(filteredMap["L-Ankle"].y[i]),
+
+          fmt(cpX), fmt(cpY),  // ★ CPは端点でもblankフラグを適用しない
 
           (eventLogs.find(e => e.frame === originalFrameNumber)?.label || "")
         ];
@@ -1882,7 +1964,11 @@ startAnalysisBtn.addEventListener("click", async () => {
 
   redrawAll();
 
-  frameData[currentFrame] = JSON.parse(JSON.stringify(joints));
+  if (!frameData[currentFrame]) {
+    frameData[currentFrame] = {};
+  }
+  frameData[currentFrame].joints = JSON.parse(JSON.stringify(joints));
+  frameData[currentFrame].customPoint = null;
   frameNumberSpan.textContent = currentFrame + 1;
 });
 
