@@ -1814,8 +1814,11 @@ cfRow.push(Math.round(cfMap[name].y));
       rowsFiltered.push(cfRow);
 
       // ★ 修正2：A列（Cut-off freq.の下）にメッセージを追加
-      const noteRow = ["Consider excluding the first and last 3 to 5 data points."];
-      rowsFiltered.push(noteRow);
+      const noteRow1 = ["Consider excluding the first and last 3 to 5 data points."];
+      rowsFiltered.push(noteRow1);
+
+      const noteRow2 = ["Custom points (CP) are not filtered."];
+      rowsFiltered.push(noteRow2);
 
       // ★ 修正1：AJ列にフィルターパラメータを追加
       if (butterworthParams) {
