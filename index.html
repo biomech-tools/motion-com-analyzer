@@ -1658,13 +1658,13 @@ function drawStartupLogo() {
 
     if (allowFiltered && hasMissing && !tooFewFrames) {
       allowFiltered = false;
-      msg = "Only the raw-data was saved because the analysis included unextracted coordinates.";
+      msg = "Only the raw-data was saved because the analysis included unextracted coodinates.\n\nIf the number of skipped frames is 1 or 2, filtered data will not be obtained.";
     } else if (allowFiltered && !hasMissing && tooFewFrames) {
       allowFiltered = false;
-      msg = "Only the raw-data was saved because the number of frames is too less (no less than 20).";
+      msg = "Only the raw-data was saved because the number of frames is too less (no less than 20).\n\nIf the number of skipped frames is 1 or 2, filtered data will not be obtained.";
     } else if (allowFiltered && hasMissing && tooFewFrames) {
       allowFiltered = false;
-      msg = "Only the raw-data was saved because the analysis included unextracted coordinates. Also, the number of frames is too less (no less than 20).";
+      msg = "Only the raw-data was saved because the analysis included unextracted coodinates. Also, the number of frames is too less (no less than 20).\n\nIf the number of skipped frames is 1 or 2, filtered data will not be obtained.";
     }
 
     /* ---------- 4. Filtered データ生成（解析済みフレームのみ） ---------- */
@@ -1678,6 +1678,23 @@ function drawStartupLogo() {
     if (allowFiltered) {
       const filteredMap = {};
       const cfMap = {};
+
+      // ★ Butterworthパラメータを計算（最初の関節点から取得）
+      let butterworthParams = null;
+      const firstJointName = KP_DEF[0].name;
+      const firstSeries = seriesMap[firstJointName].x;
+      if (firstSeries.length > 0) {
+        const resX = winterResidualAnalysis(firstSeries, fps, null);
+        const nyquist = fps / 2;
+        const coeff = butterworth2Coefficients(fps, resX.fc);
+        butterworthParams = {
+          inputFps: fps,
+          samplingFreq: fps,
+          nyquistFreq: nyquist,
+          a: coeff.a,
+          b: coeff.b
+        };
+      }
 
       // ★ 解析済みフレームの時系列データに対してフィルター処理
       KP_DEF.forEach(def => {
@@ -1795,6 +1812,50 @@ cfRow.push(Math.round(cfMap[name].y));
 
       cfRow.push("");
       rowsFiltered.push(cfRow);
+
+      // ★ 修正2：A列（Cut-off freq.の下）にメッセージを追加
+      const noteRow = ["Consider excluding the first and last 3 to 5 data points."];
+      rowsFiltered.push(noteRow);
+
+      // ★ 修正1：AJ列にフィルターパラメータを追加
+      if (butterworthParams) {
+        // AJ列は36列目（インデックス35）
+        const paramCol = 35;
+
+        // ヘッダー行からスタート
+        let paramRowIndex = 0;
+
+        // パラメータ情報を追加
+        const paramLines = [
+          "Filtering Parameters",
+          `Input fps: ${butterworthParams.inputFps}`,
+          `Sampling freq (Hz): ${butterworthParams.samplingFreq}`,
+          `Nyquist freq (Hz): ${butterworthParams.nyquistFreq.toFixed(2)}`,
+          "Filter type: 2nd-order Butterworth low-pass",
+          "",
+          "Coefficient of Butterworth:",
+          "a (denominator)",
+          `a[0]=${butterworthParams.a[0].toFixed(6)}`,
+          `a[1]=${butterworthParams.a[1].toFixed(6)}`,
+          `a[2]=${butterworthParams.a[2].toFixed(6)}`,
+          "",
+          "b (numerator)",
+          `b[0]=${butterworthParams.b[0].toFixed(6)}`,
+          `b[1]=${butterworthParams.b[1].toFixed(6)}`,
+          `b[2]=${butterworthParams.b[2].toFixed(6)}`
+        ];
+
+        paramLines.forEach((line, i) => {
+          if (!rowsFiltered[i]) {
+            rowsFiltered[i] = [];
+          }
+          // AJ列まで配列を拡張
+          while (rowsFiltered[i].length < paramCol + 1) {
+            rowsFiltered[i].push("");
+          }
+          rowsFiltered[i][paramCol] = line;
+        });
+      }
     }
 
     /* ---------- 5. Excel 1ファイル保存 ---------- */
@@ -1837,11 +1898,11 @@ cfRow.push(Math.round(cfMap[name].y));
     window.addEventListener("blur", blurHandler);
 
     if (saveRaw && allowFiltered) {
-      alert("The data has been saved in Excel format.\n\n(Don't switch to a different browser.)");
+      alert("The data has been saved in Excel format.\n\nIf the number of skipped frames was 1 or 2, only the raw-data was saved.\n\n(Don't switch to a different browser.)");
     } else if (saveRaw && !allowFiltered && msg) {
       alert(msg + "\n\n(Don't switch to a different browser.)");
     } else if (saveRaw && !allowFiltered && !msg && frameSkip > 0) {
-      alert("The data has been saved in Excel format.\n\n(Don't switch to a different browser.)");
+      alert("The data has been saved in Excel format.\n\nIf the number of skipped frames was 1 or 2, only the raw-data was saved.\n\n(Don't switch to a different browser.)");
     }
 
     // ★ ダイアログ表示前の時刻を記録
