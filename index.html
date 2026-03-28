@@ -25,10 +25,9 @@
   height: 75vh;
   max-height: 1000px;
   width: 100%;
-  max-width: 100%
+  max-width: 100%;
   object-fit: contain;
   border: 1px solid #ccc;
-
 }
 
 
@@ -586,10 +585,7 @@ if (drawCOM) {
       frameTimestamps = timestamps;
       totalFrames = frameTimestamps.length;
 
-      console.log(`Extracted ${totalFrames} frame timestamps`);
-
     } catch (error) {
-      console.error("FFmpeg extraction failed, falling back to frame duration method:", error);
 
       frameTimestamps = [];
       totalFrames = Math.floor(video.duration * fps);
@@ -943,7 +939,7 @@ function redrawAll() {
           let skipValid = false;
           while (!skipValid) {
             let skipChoice = prompt(
-              "How many frames should be skipped during analysis?\nInput a value between 0 and 2.\nCancel = default (0)",
+              "How many frames should be skipped during analysis?\nInput a value between 0 and 2.\nIf selecting 1 or 2, no filtering will be performed.\n\nCancel = default (0)",
               "0"
             );
 
@@ -1321,13 +1317,60 @@ frameSlider.addEventListener("input", async () => {
     return y;
   }
 
-  function zeroPhaseFilter(x, fs, fc) {
+  function padSignal(x, padLen) {
+    const n = x.length;
+    const actualPadLen = Math.min(padLen, n - 1);
+    const padded = new Array(2 * actualPadLen + n);
+
+    // Mirror padding at the beginning
+    for (let i = 0; i < actualPadLen; i++) {
+      padded[i] = 2 * x[0] - x[actualPadLen - i];
+    }
+
+    // Copy original signal
+    for (let i = 0; i < n; i++) {
+      padded[actualPadLen + i] = x[i];
+    }
+
+    // Mirror padding at the end
+    for (let i = 0; i < actualPadLen; i++) {
+      padded[actualPadLen + n + i] = 2 * x[n - 1] - x[n - 2 - i];
+    }
+
+    return padded;
+  }
+
+  function zeroPhaseFilter(x, fs, fc, debugName = '') {
     const { b, a } = butterworth2Coefficients(fs, fc);
 
-    let y = iirFilter(x, b, a);
+    // Constant padding: extend with first/last values
+    const padLen = Math.max(3 * Math.ceil(fs / fc), 10);
+    const paddedLen = x.length + 2 * padLen;
+    const padded = new Array(paddedLen);
+
+    // Pad with first value
+    for (let i = 0; i < padLen; i++) {
+      padded[i] = x[0];
+    }
+
+    // Copy original data
+    for (let i = 0; i < x.length; i++) {
+      padded[padLen + i] = x[i];
+    }
+
+    // Pad with last value
+    for (let i = 0; i < padLen; i++) {
+      padded[padLen + x.length + i] = x[x.length - 1];
+    }
+
+    // Forward pass
+    let y = iirFilter(padded, b, a);
+
+    // Backward pass
     y = iirFilter(y.slice().reverse(), b, a).reverse();
 
-    return y;
+    // Remove padding and return
+    return y.slice(padLen, padLen + x.length);
   }
 
   function residualRMS(orig, filt) {
@@ -1365,58 +1408,43 @@ frameSlider.addEventListener("input", async () => {
     return { a, b };
   }
 
-  function fillMissing(orig) {
-    const filled = [...orig];
+  function winterResidualAnalysis(orig, fs, debugName) {
+    // シンプルに：nullチェックして、有効なデータのみフィルタリング
+    const hasNull = orig.some(v => v == null);
 
-    let first = filled.find(v => v != null);
-    if (first == null) {
-      for (let i = 0; i < filled.length; i++) filled[i] = 0;
-      return filled;
+    // Nullがある場合は元データをそのまま返す
+    if (hasNull) {
+      return { fc: 0, filtered: [...orig] };
     }
 
-    for (let i = 0; i < filled.length; i++) {
-      if (filled[i] == null) filled[i] = first;
-      else break;
-    }
-
-    for (let i = 1; i < filled.length; i++) {
-      if (filled[i] == null) filled[i] = filled[i - 1];
-    }
-
-    return filled;
-  }
-
-  function winterResidualAnalysis(orig, fs) {
     const nyquist = fs / 2;
     const maxFc = Math.min(12, nyquist * 0.8);
-    const baseCandidates = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+    const baseCandidates = [4, 6, 8, 10, 12];
     const candidates = baseCandidates.filter(fc => fc < maxFc);
 
-    const filled = fillMissing(orig);
+    if (candidates.length === 0) {
+      return { fc: 0, filtered: [...orig] };
+    }
 
     const rmsList = [];
     const filtList = [];
 
+    // 各カットオフ周波数でフィルタリング
     for (let i = 0; i < candidates.length; i++) {
       const fc = candidates[i];
-      const filt = zeroPhaseFilter(filled, fs, fc);
+      const filt = zeroPhaseFilter(orig, fs, fc, i === 0 && debugName ? debugName : '');
       const rms = residualRMS(orig, filt);
       rmsList.push(rms);
       filtList.push(filt);
     }
 
-    const lowXs = candidates.slice(0, 3);
-    const lowYs = rmsList.slice(0, 3);
-    const { a, b } = linearRegression(lowXs, lowYs);
-
+    // Winter法：最小RMSを持つ周波数を選択
+    // （最もノイズを除去し、かつ信号を保持している周波数）
     let bestIdx = 0;
-    let bestDiff = Infinity;
-    for (let i = 0; i < candidates.length; i++) {
-      const fc = candidates[i];
-      const lineVal = a * fc + b;
-      const diff = Math.abs(rmsList[i] - lineVal);
-      if (diff < bestDiff) {
-        bestDiff = diff;
+    let minRms = rmsList[0];
+    for (let i = 1; i < rmsList.length; i++) {
+      if (rmsList[i] < minRms) {
+        minRms = rmsList[i];
         bestIdx = i;
       }
     }
@@ -1577,7 +1605,7 @@ function drawStartupLogo() {
 
       const row = [
         originalFrameNumber + 1,
-        Number(timeSec.toFixed(3)),
+        Number(timeSec.toFixed(5)),
         hasEstimated ? null : fmt(comX),
         hasEstimated ? null : fmt(comY),
 
@@ -1642,6 +1670,11 @@ function drawStartupLogo() {
     /* ---------- 4. Filtered データ生成（解析済みフレームのみ） ---------- */
     let rowsFiltered = null;
 
+    // ★ フレームスキップがある場合はフィルター処理を完全にスキップ
+    if (frameSkip > 0) {
+      allowFiltered = false;
+    }
+
     if (allowFiltered) {
       const filteredMap = {};
       const cfMap = {};
@@ -1652,8 +1685,8 @@ function drawStartupLogo() {
         const sx = seriesMap[name].x;
         const sy = seriesMap[name].y;
 
-        const resX = winterResidualAnalysis(sx, fps);
-        const resY = winterResidualAnalysis(sy, fps);
+        const resX = winterResidualAnalysis(sx, fps, null);
+        const resY = winterResidualAnalysis(sy, fps, null);
 
         filteredMap[name] = {
           x: resX.filtered,
@@ -1688,8 +1721,8 @@ function drawStartupLogo() {
 
         const timeSec = originalFrameNumber / fps;
 
-        // ★ 端点4フレームは出力しない（フィルター処理の境界効果）
-        const blank = (i < 4 || i >= analyzedFrames.length - 4);
+        // ★ ゼロ位相フィルター使用のため境界効果は最小限
+        const blank = false;
 
         // CP座標（フィルター処理しない、Rawそのまま）
         // ★ CPは端点4フレームでも表示する
@@ -1702,7 +1735,7 @@ function drawStartupLogo() {
 
         const row = [
           originalFrameNumber + 1,
-          Number(timeSec.toFixed(3)),
+          Number(timeSec.toFixed(5)),
 
           blank ? null : fmt(comXf),
           blank ? null : fmt(comYf),
@@ -1804,9 +1837,11 @@ cfRow.push(Math.round(cfMap[name].y));
     window.addEventListener("blur", blurHandler);
 
     if (saveRaw && allowFiltered) {
-      alert("Raw- and filtered data were saved completely (Excel file).\n\n(Don't switch to a different browser.)");
+      alert("The data has been saved in Excel format.\n\n(Don't switch to a different browser.)");
     } else if (saveRaw && !allowFiltered && msg) {
       alert(msg + "\n\n(Don't switch to a different browser.)");
+    } else if (saveRaw && !allowFiltered && !msg && frameSkip > 0) {
+      alert("The data has been saved in Excel format.\n\n(Don't switch to a different browser.)");
     }
 
     // ★ ダイアログ表示前の時刻を記録
@@ -1897,10 +1932,6 @@ startAnalysisBtn.addEventListener("click", async () => {
     retries++;
   }
 
-  // ★ デバッグ用：解析を開始するフレーム番号を出力
-  console.log("=== 解析開始 ===");
-  console.log("指定フレーム:", currentFrame + 1, "/ ビデオ時刻:", video.currentTime.toFixed(3));
-
   // ★ 期待される時刻を計算
   let expectedTime;
   if (frameTimestamps.length > 0 && currentFrame < frameTimestamps.length) {
@@ -1908,22 +1939,17 @@ startAnalysisBtn.addEventListener("click", async () => {
   } else {
     expectedTime = currentFrame * frameDuration;
   }
-  console.log("期待時刻:", expectedTime.toFixed(3), "/ 差:", Math.abs(video.currentTime - expectedTime).toFixed(3), "秒");
 
   // ★ ビデオの時刻が期待値から大きくずれている場合は、もう一度シーク
   const timeDiff = Math.abs(video.currentTime - expectedTime);
   if (timeDiff > frameDuration * 0.5) {
-    console.log("時刻のずれが大きいため、再度シークします...");
     await seekToFrame(currentFrame);
     await new Promise(resolve => setTimeout(resolve, 200));
-    console.log("再シーク後のビデオ時刻:", video.currentTime.toFixed(3));
   }
 
   // 現在のフレームで解析を試行
   drawCurrentFrame();
   const poseDetected = await runPoseEstimationOnCurrentFrame();
-
-  console.log("ポーズ検出:", poseDetected);
 
   // ★ 人が検出されなかった場合の処理
   if (!poseDetected) {
@@ -1996,7 +2022,7 @@ finishBtn.addEventListener("click", () => {
 
   // ★ ダイアログ表示前の時刻を記録
   const dialogStartTime = Date.now();
-  const shouldSave = confirm("Save the raw and (if possible) the filtered data in Excel format?\nCancel = No\n\n(Don't switch to a different browser.)");
+  const shouldSave = confirm("Save the raw and (if possible) the filtered data in Excel format?\nIn frame-skipped analysis, filtered data is not saved.\n\nCancel = No\n\n(Don't switch to a different browser.)");
   const dialogEndTime = Date.now();
 
   // ★ イベントをキャプチャする時間を確保してから判定
