@@ -2426,6 +2426,14 @@ finishBtn.addEventListener("click", () => {
     return;
   }
 
+  // ★ 最後のフレームで入力中のCP座標がある場合は保存
+  if (customPoint && customPoint.x != null && customPoint.y != null) {
+    if (!frameData[currentFrame]) {
+      frameData[currentFrame] = { joints: [], customPoint: null };
+    }
+    frameData[currentFrame].customPoint = { x: customPoint.x, y: customPoint.y };
+  }
+
   // ★ 解析終了なので keyHint を隠す
   document.getElementById("keyHint").style.display = "none";
 
