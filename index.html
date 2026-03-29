@@ -283,6 +283,26 @@ window.addEventListener("load", () => {
   let frameSkip = 0;
   let customPoint = null;  // CP (Custom Point) - 各フレームに1点のみ
 
+  // Winter (1990) body segment mass percentages (% of total body mass)
+  const SEGMENT_MASS = {
+    headNeck: 0.0826,    // Head + Neck (combined)
+    trunk: 0.551,        // Whole trunk
+    upperArm: 0.0325,    // Upper arm (each)
+    forearmHand: 0.0252, // Forearm + Hand (0.0187 + 0.0065, each)
+    thigh: 0.105,        // Thigh (each)
+    shankFoot: 0.0618    // Shank + Foot (0.0475 + 0.0143, each)
+  };
+
+  // Winter (1990) segment COM positions (% from proximal end)
+  const SEGMENT_COM = {
+    headNeck: 0.50,      // 50% from top (at ear level)
+    trunk: 0.563,        // 56.3% from shoulder to hip
+    upperArm: 0.436,     // 43.6% from shoulder to elbow
+    forearmHand: 0.682,  // 68.2% from elbow to wrist (includes hand weight)
+    thigh: 0.433,        // 43.3% from hip to knee
+    shankFoot: 0.447     // 44.7% from knee to ankle (includes foot weight)
+  };
+
   const KP_DEF = [
     { id: 4,  name: "R-Ear",      side: "R" },
     { id: 3,  name: "L-Ear",      side: "L" },
@@ -489,19 +509,20 @@ if (!j.estimated) {
 
     });
 
+    // ★ 重心の描画：未抽出座標がある場合は点滅、ない場合は常時表示
     if (com) {
-      const drawCOM = (!hasUnplaced || (hasUnplaced && blinkOn));
+      const hasEstimated = joints.some(j => j.estimated);
+      const shouldDraw = hasEstimated ? blinkOn : true;
 
-if (drawCOM) {
-  ctx.beginPath();
-  ctx.arc(com.x, com.y, 10 * SCALE_UI, 0, Math.PI * 2);
-  ctx.fillStyle = "yellow";
-  ctx.fill();
-  ctx.strokeStyle = "black";
-  ctx.lineWidth = 3 * SCALE_UI;
-  ctx.stroke();
-}
-
+      if (shouldDraw) {
+        ctx.beginPath();
+        ctx.arc(com.x, com.y, 10 * SCALE_UI, 0, Math.PI * 2);
+        ctx.fillStyle = "yellow";
+        ctx.fill();
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 3 * SCALE_UI;
+        ctx.stroke();
+      }
     }
 
     // CP (Custom Point) の描画
@@ -519,16 +540,124 @@ if (drawCOM) {
       return;
     }
 
-    let sumX = 0, sumY = 0, count = 0;
-    joints.forEach(j => {
-      if (j.x != null && j.y != null) {
-        sumX += j.x;
-        sumY += j.y;
-        count++;
-      }
-    });
+    // Winter (1990) による部分重心係数を使用した重心計算
+    // 各セグメントの重心位置を計算し、質量で重み付け平均
+    // ★ CRITICAL: estimated（未抽出）関節は除外する（Excel出力と完全一致）
 
-    com = (count > 0) ? { x: sumX / count, y: sumY / count } : null;
+    const getJoint = (name) => joints.find(j => j.name === name);
+
+    let weightedX = 0, weightedY = 0, totalMass = 0;
+
+    // Head+Neck segment (耳の中点がCOM)
+    const rEar = getJoint("R-Ear");
+    const lEar = getJoint("L-Ear");
+    if (rEar?.x != null && lEar?.x != null && !rEar.estimated && !lEar.estimated) {
+      const headX = (rEar.x + lEar.x) / 2;
+      const headY = (rEar.y + lEar.y) / 2;
+      weightedX += headX * SEGMENT_MASS.headNeck;
+      weightedY += headY * SEGMENT_MASS.headNeck;
+      totalMass += SEGMENT_MASS.headNeck;
+    }
+
+    // Trunk segment (肩から腰へ56.3%)
+    const rShoulder = getJoint("R-Shoulder");
+    const lShoulder = getJoint("L-Shoulder");
+    const rHip = getJoint("R-Hip");
+    const lHip = getJoint("L-Hip");
+    if (rShoulder?.x != null && lShoulder?.x != null && rHip?.x != null && lHip?.x != null &&
+        !rShoulder.estimated && !lShoulder.estimated && !rHip.estimated && !lHip.estimated) {
+      const shoulderX = (rShoulder.x + lShoulder.x) / 2;
+      const shoulderY = (rShoulder.y + lShoulder.y) / 2;
+      const hipX = (rHip.x + lHip.x) / 2;
+      const hipY = (rHip.y + lHip.y) / 2;
+      const trunkX = shoulderX + (hipX - shoulderX) * SEGMENT_COM.trunk;
+      const trunkY = shoulderY + (hipY - shoulderY) * SEGMENT_COM.trunk;
+      weightedX += trunkX * SEGMENT_MASS.trunk;
+      weightedY += trunkY * SEGMENT_MASS.trunk;
+      totalMass += SEGMENT_MASS.trunk;
+    }
+
+    // Right upper arm (肩から肘へ43.6%)
+    const rElbow = getJoint("R-Elbow");
+    if (rShoulder?.x != null && rElbow?.x != null && !rShoulder.estimated && !rElbow.estimated) {
+      const armX = rShoulder.x + (rElbow.x - rShoulder.x) * SEGMENT_COM.upperArm;
+      const armY = rShoulder.y + (rElbow.y - rShoulder.y) * SEGMENT_COM.upperArm;
+      weightedX += armX * SEGMENT_MASS.upperArm;
+      weightedY += armY * SEGMENT_MASS.upperArm;
+      totalMass += SEGMENT_MASS.upperArm;
+    }
+
+    // Left upper arm
+    const lElbow = getJoint("L-Elbow");
+    if (lShoulder?.x != null && lElbow?.x != null && !lShoulder.estimated && !lElbow.estimated) {
+      const armX = lShoulder.x + (lElbow.x - lShoulder.x) * SEGMENT_COM.upperArm;
+      const armY = lShoulder.y + (lElbow.y - lShoulder.y) * SEGMENT_COM.upperArm;
+      weightedX += armX * SEGMENT_MASS.upperArm;
+      weightedY += armY * SEGMENT_MASS.upperArm;
+      totalMass += SEGMENT_MASS.upperArm;
+    }
+
+    // Right forearm+hand (肘から手首へ68.2%)
+    const rWrist = getJoint("R-Wrist");
+    if (rElbow?.x != null && rWrist?.x != null && !rElbow.estimated && !rWrist.estimated) {
+      const forearmX = rElbow.x + (rWrist.x - rElbow.x) * SEGMENT_COM.forearmHand;
+      const forearmY = rElbow.y + (rWrist.y - rElbow.y) * SEGMENT_COM.forearmHand;
+      weightedX += forearmX * SEGMENT_MASS.forearmHand;
+      weightedY += forearmY * SEGMENT_MASS.forearmHand;
+      totalMass += SEGMENT_MASS.forearmHand;
+    }
+
+    // Left forearm+hand
+    const lWrist = getJoint("L-Wrist");
+    if (lElbow?.x != null && lWrist?.x != null && !lElbow.estimated && !lWrist.estimated) {
+      const forearmX = lElbow.x + (lWrist.x - lElbow.x) * SEGMENT_COM.forearmHand;
+      const forearmY = lElbow.y + (lWrist.y - lElbow.y) * SEGMENT_COM.forearmHand;
+      weightedX += forearmX * SEGMENT_MASS.forearmHand;
+      weightedY += forearmY * SEGMENT_MASS.forearmHand;
+      totalMass += SEGMENT_MASS.forearmHand;
+    }
+
+    // Right thigh (腰から膝へ43.3%)
+    const rKnee = getJoint("R-Knee");
+    if (rHip?.x != null && rKnee?.x != null && !rHip.estimated && !rKnee.estimated) {
+      const thighX = rHip.x + (rKnee.x - rHip.x) * SEGMENT_COM.thigh;
+      const thighY = rHip.y + (rKnee.y - rHip.y) * SEGMENT_COM.thigh;
+      weightedX += thighX * SEGMENT_MASS.thigh;
+      weightedY += thighY * SEGMENT_MASS.thigh;
+      totalMass += SEGMENT_MASS.thigh;
+    }
+
+    // Left thigh
+    const lKnee = getJoint("L-Knee");
+    if (lHip?.x != null && lKnee?.x != null && !lHip.estimated && !lKnee.estimated) {
+      const thighX = lHip.x + (lKnee.x - lHip.x) * SEGMENT_COM.thigh;
+      const thighY = lHip.y + (lKnee.y - lHip.y) * SEGMENT_COM.thigh;
+      weightedX += thighX * SEGMENT_MASS.thigh;
+      weightedY += thighY * SEGMENT_MASS.thigh;
+      totalMass += SEGMENT_MASS.thigh;
+    }
+
+    // Right shank+foot (膝から足首へ44.7%)
+    const rAnkle = getJoint("R-Ankle");
+    if (rKnee?.x != null && rAnkle?.x != null && !rKnee.estimated && !rAnkle.estimated) {
+      const shankX = rKnee.x + (rAnkle.x - rKnee.x) * SEGMENT_COM.shankFoot;
+      const shankY = rKnee.y + (rAnkle.y - rKnee.y) * SEGMENT_COM.shankFoot;
+      weightedX += shankX * SEGMENT_MASS.shankFoot;
+      weightedY += shankY * SEGMENT_MASS.shankFoot;
+      totalMass += SEGMENT_MASS.shankFoot;
+    }
+
+    // Left shank+foot
+    const lAnkle = getJoint("L-Ankle");
+    if (lKnee?.x != null && lAnkle?.x != null && !lKnee.estimated && !lAnkle.estimated) {
+      const shankX = lKnee.x + (lAnkle.x - lKnee.x) * SEGMENT_COM.shankFoot;
+      const shankY = lKnee.y + (lAnkle.y - lKnee.y) * SEGMENT_COM.shankFoot;
+      weightedX += shankX * SEGMENT_MASS.shankFoot;
+      weightedY += shankY * SEGMENT_MASS.shankFoot;
+      totalMass += SEGMENT_MASS.shankFoot;
+    }
+
+    com = (totalMass > 0) ? { x: weightedX / totalMass, y: weightedY / totalMass } : null;
   }
 
   async function initDetector() {
@@ -623,6 +752,7 @@ if (drawCOM) {
       return {
         x: p.x * scaleX,
         y: p.y * scaleY,
+        name: def.name,
         part: def.name,
         side: def.side,
         estimated: !visible,
@@ -860,44 +990,65 @@ function redrawAll() {
 
           document.addEventListener("visibilitychange", fpsVisibilityHandler);
 
-          let fpsChoice = prompt(
-            "Input fps:\n30 / 60 / 120 / 240 / Custom (real fps)\nCancel = default (29.97 fps)\n(Don't switch to a different browser.)",
-            "30"
-          );
+          let fpsChoice = null;
+          let validFpsInput = false;
 
-          let fpsDialogEndTime = Date.now();
+          while (!validFpsInput) {
+            fpsChoice = prompt(
+              "Input fps:\n30 / 60 / 120 / 240\nCancel = default (29.97 fps)\n\n(Don't switch to a different browser.)",
+              "30"
+            );
 
-          // ★ イベントキャプチャのために50ms待機してから検証
-          await new Promise(resolve => setTimeout(resolve, 50));
+            let fpsDialogEndTime = Date.now();
 
-          document.removeEventListener("visibilitychange", fpsVisibilityHandler);
+            // ★ イベントキャプチャのために50ms待機してから検証
+            await new Promise(resolve => setTimeout(resolve, 50));
 
-          // ★ ブラウザ切り替えが検出された場合、水平補正からやり直し
-          if (fpsDialogInterrupted) {
-            alert("Retry horizontal adjustment and calibration again.");
+            document.removeEventListener("visibilitychange", fpsVisibilityHandler);
 
-            horizontalPoints = [];
-            calibrationPoints = [];
-            rotationAngle = 0;
-            calibrationScale = 1;
+            // ★ ブラウザ切り替えが検出された場合、水平補正からやり直し
+            if (fpsDialogInterrupted) {
+              alert("Retry horizontal adjustment and calibration again.");
 
-            mode = "horizontal";
-            message.textContent = "Horizontal adjustment: Click the first point.";
-            showInstruction("Use the scroll bar to move through frames.");
-            document.getElementById("flipButton").style.display = "block";
+              horizontalPoints = [];
+              calibrationPoints = [];
+              rotationAngle = 0;
+              calibrationScale = 1;
 
-            const currentTime = video.currentTime;
-            frameSlider.value = currentTime;
+              mode = "horizontal";
+              message.textContent = "Horizontal adjustment: Click the first point.";
+              showInstruction("Use the scroll bar to move through frames.");
+              document.getElementById("flipButton").style.display = "block";
 
-            drawCurrentFrame();
-            redrawAll();
-            return;
+              const currentTime = video.currentTime;
+              frameSlider.value = currentTime;
+
+              drawCurrentFrame();
+              redrawAll();
+              return;
+            }
+
+            // Check if Cancel was pressed or empty input (default to 29.97 fps)
+            if (!fpsChoice || fpsChoice.trim() === "") {
+              validFpsInput = true;
+              break;
+            }
+
+            // Validate input: only accept 30, 60, 120, 240
+            const inputValue = parseFloat(fpsChoice.trim());
+            if (inputValue === 30 || inputValue === 60 || inputValue === 120 || inputValue === 240) {
+              validFpsInput = true;
+            } else {
+              alert("Retry to input fps. Except for 30, 60, 120, and 240 fps, no other fps can be input.");
+              // Re-add event listener for next iteration
+              document.addEventListener("visibilitychange", fpsVisibilityHandler);
+              fpsDialogInterrupted = false;
+            }
           }
 
           function toActualFPS(n) {
             if (n === 30) return 29.97;
             if (n === 60) return 59.94;
-            if (n === 90) return 90.00;
             if (n === 120) return 119.88;
             if (n === 240) return 239.76;
             return n;
@@ -905,15 +1056,11 @@ function redrawAll() {
 
           let fpsNum = 30;
 
+          // At this point, fpsChoice is either null/empty (default) or a valid value (30/60/120/240)
           if (!fpsChoice || fpsChoice.trim() === "") {
             fpsNum = 30;
           } else {
-            fpsChoice = fpsChoice.trim();
-            let v = parseFloat(fpsChoice);
-            if (!v || v <= 0) {
-              v = 30;
-            }
-            fpsNum = v;
+            fpsNum = parseFloat(fpsChoice.trim());
           }
 
           fps = toActualFPS(fpsNum);
@@ -1307,12 +1454,30 @@ frameSlider.addEventListener("input", async () => {
   function iirFilter(x, b, a) {
     const y = new Array(x.length).fill(0);
 
+    // 初期条件の設定（定常状態を仮定）
+    const x0 = x[0];
+    const sumB = b[0] + b[1] + b[2];
+    const sumA = 1 + a[1] + a[2];
+
+    // ゼロ除算を防ぐ
+    const gain = Math.abs(sumA) > 1e-10 ? sumB / sumA : 1.0;
+
+    let x_n1 = x0;
+    let x_n2 = x0;
+    let y_n1 = x0 * gain;
+    let y_n2 = x0 * gain;
+
     for (let n = 0; n < x.length; n++) {
-      y[n] = b[0] * x[n]
-           + (n - 1 >= 0 ? b[1] * x[n - 1] : 0)
-           + (n - 2 >= 0 ? b[2] * x[n - 2] : 0)
-           - (n - 1 >= 0 ? a[1] * y[n - 1] : 0)
-           - (n - 2 >= 0 ? a[2] * y[n - 2] : 0);
+      const x_n = x[n];
+
+      // IIRフィルタの差分方程式
+      y[n] = b[0] * x_n + b[1] * x_n1 + b[2] * x_n2 - a[1] * y_n1 - a[2] * y_n2;
+
+      // 状態を更新
+      x_n2 = x_n1;
+      x_n1 = x_n;
+      y_n2 = y_n1;
+      y_n1 = y[n];
     }
     return y;
   }
@@ -1417,10 +1582,36 @@ frameSlider.addEventListener("input", async () => {
       return { fc: 0, filtered: [...orig] };
     }
 
+    // Because the sampling frequency differed across recordings (30–240 Hz), the cutoff frequency determined by residual analysis was normalized
+    // to maintain an equivalent relative cutoff (fc / Nyquist).
+    // Specifically, the cutoff frequency was scaled in proportion to the sampling frequency:
+    // f_cut,new = f_cut, residual × (fs,new / fs,reference)
+    // where fs,reference = 30 Hz.
+
+    // FPSに応じたスケーリング係数を決定
+    let fpsMultiplier = 1.0;
+    if (fs >= 200) {
+      fpsMultiplier = 8.0; // 240fps
+    } else if (fs >= 100) {
+      fpsMultiplier = 4.0; // 120fps
+    } else if (fs >= 50) {
+      fpsMultiplier = 2.0; // 60fps
+    } else {
+      fpsMultiplier = 1.0; // 30fps
+    }
+
     const nyquist = fs / 2;
-    const maxFc = Math.min(12, nyquist * 0.8);
     const baseCandidates = [4, 6, 8, 10, 12];
-    const candidates = baseCandidates.filter(fc => fc < maxFc);
+    const candidates = [];
+
+    // 残差分析法用の候補を準備（元の周波数で）
+    for (let i = 0; i < baseCandidates.length; i++) {
+      const fc = baseCandidates[i];
+      // ナイキスト周波数の80%を超えないようにチェック
+      if (fc <= nyquist * 0.8) {
+        candidates.push(fc);
+      }
+    }
 
     if (candidates.length === 0) {
       return { fc: 0, filtered: [...orig] };
@@ -1429,10 +1620,11 @@ frameSlider.addEventListener("input", async () => {
     const rmsList = [];
     const filtList = [];
 
-    // 各カットオフ周波数でフィルタリング
+    // 各カットオフ周波数でフィルタリング（元の周波数でRMS比較）
     for (let i = 0; i < candidates.length; i++) {
-      const fc = candidates[i];
-      const filt = zeroPhaseFilter(orig, fs, fc, i === 0 && debugName ? debugName : '');
+      const baseFc = candidates[i];
+      // 残差分析は元の周波数で実施
+      const filt = zeroPhaseFilter(orig, fs, baseFc, i === 0 && debugName ? debugName : '');
       const rms = residualRMS(orig, filt);
       rmsList.push(rms);
       filtList.push(filt);
@@ -1449,10 +1641,15 @@ frameSlider.addEventListener("input", async () => {
       }
     }
 
-    const bestFc = candidates[bestIdx];
-    const bestFilt = filtList[bestIdx];
+    // 最適な元周波数
+    const bestBaseFc = candidates[bestIdx];
 
-    return { fc: bestFc, filtered: bestFilt };
+    // 倍率を適用して最終フィルタリング
+    const finalAdjustedFc = bestBaseFc * fpsMultiplier;
+    const finalFiltered = zeroPhaseFilter(orig, fs, finalAdjustedFc, '');
+
+    // Excel出力用には元の周波数（倍率調整前）を返す
+    return { fc: bestBaseFc, filtered: finalFiltered };
   }
 
   /* ===== Part 2 End ===== */
@@ -1545,6 +1742,8 @@ function drawStartupLogo() {
     KP_DEF.forEach(def => {
       seriesMap[def.name] = { x: [], y: [] };
     });
+    // COMのseriesMapも初期化
+    seriesMap["COM"] = { x: [], y: [] };
 
     // ★ 解析済みフレームを順番に処理
     for (let i = 0; i < analyzedFrames.length; i++) {
@@ -1554,26 +1753,124 @@ function drawStartupLogo() {
 
       const hasEstimated = jointsFrame.some(j => j.estimated);
 
-      // COM計算
-      let sumX = 0, sumY = 0, count = 0;
-      jointsFrame.forEach(j => {
-        if (!j.estimated && j.x != null && j.y != null) {
-          const x0 = j.x * scale;
-          const y0 = -(j.y - baselineY) * scale;
-          sumX += x0;
-          sumY += y0;
-          count++;
-        }
-      });
-      const comX = (count > 0) ? (sumX / count) : null;
-      const comY = (count > 0) ? (sumY / count) : null;
+      // COM計算（Winter 1990に基づく）
+      const getJ = (name) => jointsFrame.find(j => j.name === name);
+
+      let weightedX = 0, weightedY = 0, totalMass = 0;
+
+      const rEar = getJ("R-Ear");
+      const lEar = getJ("L-Ear");
+      if (rEar?.x != null && lEar?.x != null && !rEar.estimated && !lEar.estimated) {
+        const headX = ((rEar.x + lEar.x) / 2) * scale;
+        const headY = -((rEar.y + lEar.y) / 2 - baselineY) * scale;
+        weightedX += headX * SEGMENT_MASS.headNeck;
+        weightedY += headY * SEGMENT_MASS.headNeck;
+        totalMass += SEGMENT_MASS.headNeck;
+      }
+
+      const rShoulder = getJ("R-Shoulder");
+      const lShoulder = getJ("L-Shoulder");
+      const rHip = getJ("R-Hip");
+      const lHip = getJ("L-Hip");
+      if (rShoulder?.x != null && lShoulder?.x != null && rHip?.x != null && lHip?.x != null &&
+          !rShoulder.estimated && !lShoulder.estimated && !rHip.estimated && !lHip.estimated) {
+        const shoulderX = ((rShoulder.x + lShoulder.x) / 2) * scale;
+        const shoulderY = -((rShoulder.y + lShoulder.y) / 2 - baselineY) * scale;
+        const hipX = ((rHip.x + lHip.x) / 2) * scale;
+        const hipY = -((rHip.y + lHip.y) / 2 - baselineY) * scale;
+        const trunkX = shoulderX + (hipX - shoulderX) * SEGMENT_COM.trunk;
+        const trunkY = shoulderY + (hipY - shoulderY) * SEGMENT_COM.trunk;
+        weightedX += trunkX * SEGMENT_MASS.trunk;
+        weightedY += trunkY * SEGMENT_MASS.trunk;
+        totalMass += SEGMENT_MASS.trunk;
+      }
+
+      const rElbow = getJ("R-Elbow");
+      if (rShoulder?.x != null && rElbow?.x != null && !rShoulder.estimated && !rElbow.estimated) {
+        const armX = (rShoulder.x + (rElbow.x - rShoulder.x) * SEGMENT_COM.upperArm) * scale;
+        const armY = -(rShoulder.y + (rElbow.y - rShoulder.y) * SEGMENT_COM.upperArm - baselineY) * scale;
+        weightedX += armX * SEGMENT_MASS.upperArm;
+        weightedY += armY * SEGMENT_MASS.upperArm;
+        totalMass += SEGMENT_MASS.upperArm;
+      }
+
+      const lElbow = getJ("L-Elbow");
+      if (lShoulder?.x != null && lElbow?.x != null && !lShoulder.estimated && !lElbow.estimated) {
+        const armX = (lShoulder.x + (lElbow.x - lShoulder.x) * SEGMENT_COM.upperArm) * scale;
+        const armY = -(lShoulder.y + (lElbow.y - lShoulder.y) * SEGMENT_COM.upperArm - baselineY) * scale;
+        weightedX += armX * SEGMENT_MASS.upperArm;
+        weightedY += armY * SEGMENT_MASS.upperArm;
+        totalMass += SEGMENT_MASS.upperArm;
+      }
+
+      const rWrist = getJ("R-Wrist");
+      if (rElbow?.x != null && rWrist?.x != null && !rElbow.estimated && !rWrist.estimated) {
+        const forearmX = (rElbow.x + (rWrist.x - rElbow.x) * SEGMENT_COM.forearmHand) * scale;
+        const forearmY = -(rElbow.y + (rWrist.y - rElbow.y) * SEGMENT_COM.forearmHand - baselineY) * scale;
+        weightedX += forearmX * SEGMENT_MASS.forearmHand;
+        weightedY += forearmY * SEGMENT_MASS.forearmHand;
+        totalMass += SEGMENT_MASS.forearmHand;
+      }
+
+      const lWrist = getJ("L-Wrist");
+      if (lElbow?.x != null && lWrist?.x != null && !lElbow.estimated && !lWrist.estimated) {
+        const forearmX = (lElbow.x + (lWrist.x - lElbow.x) * SEGMENT_COM.forearmHand) * scale;
+        const forearmY = -(lElbow.y + (lWrist.y - lElbow.y) * SEGMENT_COM.forearmHand - baselineY) * scale;
+        weightedX += forearmX * SEGMENT_MASS.forearmHand;
+        weightedY += forearmY * SEGMENT_MASS.forearmHand;
+        totalMass += SEGMENT_MASS.forearmHand;
+      }
+
+      const rKnee = getJ("R-Knee");
+      if (rHip?.x != null && rKnee?.x != null && !rHip.estimated && !rKnee.estimated) {
+        const thighX = (rHip.x + (rKnee.x - rHip.x) * SEGMENT_COM.thigh) * scale;
+        const thighY = -(rHip.y + (rKnee.y - rHip.y) * SEGMENT_COM.thigh - baselineY) * scale;
+        weightedX += thighX * SEGMENT_MASS.thigh;
+        weightedY += thighY * SEGMENT_MASS.thigh;
+        totalMass += SEGMENT_MASS.thigh;
+      }
+
+      const lKnee = getJ("L-Knee");
+      if (lHip?.x != null && lKnee?.x != null && !lHip.estimated && !lKnee.estimated) {
+        const thighX = (lHip.x + (lKnee.x - lHip.x) * SEGMENT_COM.thigh) * scale;
+        const thighY = -(lHip.y + (lKnee.y - lHip.y) * SEGMENT_COM.thigh - baselineY) * scale;
+        weightedX += thighX * SEGMENT_MASS.thigh;
+        weightedY += thighY * SEGMENT_MASS.thigh;
+        totalMass += SEGMENT_MASS.thigh;
+      }
+
+      const rAnkle = getJ("R-Ankle");
+      if (rKnee?.x != null && rAnkle?.x != null && !rKnee.estimated && !rAnkle.estimated) {
+        const shankX = (rKnee.x + (rAnkle.x - rKnee.x) * SEGMENT_COM.shankFoot) * scale;
+        const shankY = -(rKnee.y + (rAnkle.y - rKnee.y) * SEGMENT_COM.shankFoot - baselineY) * scale;
+        weightedX += shankX * SEGMENT_MASS.shankFoot;
+        weightedY += shankY * SEGMENT_MASS.shankFoot;
+        totalMass += SEGMENT_MASS.shankFoot;
+      }
+
+      const lAnkle = getJ("L-Ankle");
+      if (lKnee?.x != null && lAnkle?.x != null && !lKnee.estimated && !lAnkle.estimated) {
+        const shankX = (lKnee.x + (lAnkle.x - lKnee.x) * SEGMENT_COM.shankFoot) * scale;
+        const shankY = -(lKnee.y + (lAnkle.y - lKnee.y) * SEGMENT_COM.shankFoot - baselineY) * scale;
+        weightedX += shankX * SEGMENT_MASS.shankFoot;
+        weightedY += shankY * SEGMENT_MASS.shankFoot;
+        totalMass += SEGMENT_MASS.shankFoot;
+      }
+
+      // COM座標を変数に保存
+      let comX = null;
+      let comY = null;
+      if (totalMass > 0) {
+        comX = weightedX / totalMass;
+        comY = weightedY / totalMass;
+      }
 
       // 関節座標変換
       function getJoint(defName) {
-        return jointsFrame.find(j => j.part === defName) || null;
+        return jointsFrame.find(j => j.name === defName) || null;
       }
       function conv(j) {
-        if (!j || j.estimated || j.x == null || j.y == null) return { x: null, y: null };
+        if (!j || j.x == null || j.y == null) return { x: null, y: null };
         return {
           x: j.x * scale,
           y: -(j.y - baselineY) * scale
@@ -1592,6 +1889,10 @@ function drawStartupLogo() {
         seriesMap[def.name].y.push(p.y);
       });
 
+      // COMのデータもseriesMapに追加
+      seriesMap["COM"].x.push(comX);
+      seriesMap["COM"].y.push(comY);
+
       // CP座標の変換
       const cp = frameInfo.customPoint;
       let cpX = null, cpY = null;
@@ -1606,8 +1907,8 @@ function drawStartupLogo() {
       const row = [
         originalFrameNumber + 1,
         Number(timeSec.toFixed(5)),
-        hasEstimated ? null : fmt(comX),
-        hasEstimated ? null : fmt(comY),
+        fmt(comX),
+        fmt(comY),
 
         fmt(jointConv["R-Ear"].x), fmt(jointConv["R-Ear"].y),
         fmt(jointConv["L-Ear"].x), fmt(jointConv["L-Ear"].y),
@@ -1679,23 +1980,6 @@ function drawStartupLogo() {
       const filteredMap = {};
       const cfMap = {};
 
-      // ★ Butterworthパラメータを計算（最初の関節点から取得）
-      let butterworthParams = null;
-      const firstJointName = KP_DEF[0].name;
-      const firstSeries = seriesMap[firstJointName].x;
-      if (firstSeries.length > 0) {
-        const resX = winterResidualAnalysis(firstSeries, fps, null);
-        const nyquist = fps / 2;
-        const coeff = butterworth2Coefficients(fps, resX.fc);
-        butterworthParams = {
-          inputFps: fps,
-          samplingFreq: fps,
-          nyquistFreq: nyquist,
-          a: coeff.a,
-          b: coeff.b
-        };
-      }
-
       // ★ 解析済みフレームの時系列データに対してフィルター処理
       KP_DEF.forEach(def => {
         const name = def.name;
@@ -1715,6 +1999,18 @@ function drawStartupLogo() {
         };
       });
 
+      // COMのフィルター処理を追加
+      const comResX = winterResidualAnalysis(seriesMap["COM"].x, fps, null);
+      const comResY = winterResidualAnalysis(seriesMap["COM"].y, fps, null);
+      filteredMap["COM"] = {
+        x: comResX.filtered,
+        y: comResY.filtered
+      };
+      cfMap["COM"] = {
+        x: comResX.fc,
+        y: comResY.fc
+      };
+
       rowsFiltered = [];
       rowsFiltered.push(header);
 
@@ -1722,19 +2018,116 @@ function drawStartupLogo() {
       for (let i = 0; i < analyzedFrames.length; i++) {
         const originalFrameNumber = analyzedFrames[i].frameNumber;
 
-        // COM計算（フィルター後）
-        let sumX = 0, sumY = 0, count = 0;
-        KP_DEF.forEach(def => {
-          const x = filteredMap[def.name].x[i];
-          const y = filteredMap[def.name].y[i];
-          if (x != null && y != null) {
-            sumX += x;
-            sumY += y;
-            count++;
-          }
-        });
-        const comXf = (count > 0) ? (sumX / count) : null;
-        const comYf = (count > 0) ? (sumY / count) : null;
+        // COM計算（フィルター後、Winter 1990に基づく）
+        let weightedX = 0, weightedY = 0, totalMass = 0;
+
+        const getRaw = (name) => {
+          const x = filteredMap[name].x[i];
+          const y = filteredMap[name].y[i];
+          return (x != null && y != null) ? { x, y } : null;
+        };
+
+        const rEar = getRaw("R-Ear");
+        const lEar = getRaw("L-Ear");
+        if (rEar && lEar) {
+          const headX = (rEar.x + lEar.x) / 2;
+          const headY = (rEar.y + lEar.y) / 2;
+          weightedX += headX * SEGMENT_MASS.headNeck;
+          weightedY += headY * SEGMENT_MASS.headNeck;
+          totalMass += SEGMENT_MASS.headNeck;
+        }
+
+        const rShoulder = getRaw("R-Shoulder");
+        const lShoulder = getRaw("L-Shoulder");
+        const rHip = getRaw("R-Hip");
+        const lHip = getRaw("L-Hip");
+        if (rShoulder && lShoulder && rHip && lHip) {
+          const shoulderX = (rShoulder.x + lShoulder.x) / 2;
+          const shoulderY = (rShoulder.y + lShoulder.y) / 2;
+          const hipX = (rHip.x + lHip.x) / 2;
+          const hipY = (rHip.y + lHip.y) / 2;
+          const trunkX = shoulderX + (hipX - shoulderX) * SEGMENT_COM.trunk;
+          const trunkY = shoulderY + (hipY - shoulderY) * SEGMENT_COM.trunk;
+          weightedX += trunkX * SEGMENT_MASS.trunk;
+          weightedY += trunkY * SEGMENT_MASS.trunk;
+          totalMass += SEGMENT_MASS.trunk;
+        }
+
+        const rElbow = getRaw("R-Elbow");
+        if (rShoulder && rElbow) {
+          const armX = rShoulder.x + (rElbow.x - rShoulder.x) * SEGMENT_COM.upperArm;
+          const armY = rShoulder.y + (rElbow.y - rShoulder.y) * SEGMENT_COM.upperArm;
+          weightedX += armX * SEGMENT_MASS.upperArm;
+          weightedY += armY * SEGMENT_MASS.upperArm;
+          totalMass += SEGMENT_MASS.upperArm;
+        }
+
+        const lElbow = getRaw("L-Elbow");
+        if (lShoulder && lElbow) {
+          const armX = lShoulder.x + (lElbow.x - lShoulder.x) * SEGMENT_COM.upperArm;
+          const armY = lShoulder.y + (lElbow.y - lShoulder.y) * SEGMENT_COM.upperArm;
+          weightedX += armX * SEGMENT_MASS.upperArm;
+          weightedY += armY * SEGMENT_MASS.upperArm;
+          totalMass += SEGMENT_MASS.upperArm;
+        }
+
+        const rWrist = getRaw("R-Wrist");
+        if (rElbow && rWrist) {
+          const forearmX = rElbow.x + (rWrist.x - rElbow.x) * SEGMENT_COM.forearmHand;
+          const forearmY = rElbow.y + (rWrist.y - rElbow.y) * SEGMENT_COM.forearmHand;
+          weightedX += forearmX * SEGMENT_MASS.forearmHand;
+          weightedY += forearmY * SEGMENT_MASS.forearmHand;
+          totalMass += SEGMENT_MASS.forearmHand;
+        }
+
+        const lWrist = getRaw("L-Wrist");
+        if (lElbow && lWrist) {
+          const forearmX = lElbow.x + (lWrist.x - lElbow.x) * SEGMENT_COM.forearmHand;
+          const forearmY = lElbow.y + (lWrist.y - lElbow.y) * SEGMENT_COM.forearmHand;
+          weightedX += forearmX * SEGMENT_MASS.forearmHand;
+          weightedY += forearmY * SEGMENT_MASS.forearmHand;
+          totalMass += SEGMENT_MASS.forearmHand;
+        }
+
+        const rKnee = getRaw("R-Knee");
+        if (rHip && rKnee) {
+          const thighX = rHip.x + (rKnee.x - rHip.x) * SEGMENT_COM.thigh;
+          const thighY = rHip.y + (rKnee.y - rHip.y) * SEGMENT_COM.thigh;
+          weightedX += thighX * SEGMENT_MASS.thigh;
+          weightedY += thighY * SEGMENT_MASS.thigh;
+          totalMass += SEGMENT_MASS.thigh;
+        }
+
+        const lKnee = getRaw("L-Knee");
+        if (lHip && lKnee) {
+          const thighX = lHip.x + (lKnee.x - lHip.x) * SEGMENT_COM.thigh;
+          const thighY = lHip.y + (lKnee.y - lHip.y) * SEGMENT_COM.thigh;
+          weightedX += thighX * SEGMENT_MASS.thigh;
+          weightedY += thighY * SEGMENT_MASS.thigh;
+          totalMass += SEGMENT_MASS.thigh;
+        }
+
+        const rAnkle = getRaw("R-Ankle");
+        if (rKnee && rAnkle) {
+          const shankX = rKnee.x + (rAnkle.x - rKnee.x) * SEGMENT_COM.shankFoot;
+          const shankY = rKnee.y + (rAnkle.y - rKnee.y) * SEGMENT_COM.shankFoot;
+          weightedX += shankX * SEGMENT_MASS.shankFoot;
+          weightedY += shankY * SEGMENT_MASS.shankFoot;
+          totalMass += SEGMENT_MASS.shankFoot;
+        }
+
+        const lAnkle = getRaw("L-Ankle");
+        if (lKnee && lAnkle) {
+          const shankX = lKnee.x + (lAnkle.x - lKnee.x) * SEGMENT_COM.shankFoot;
+          const shankY = lKnee.y + (lAnkle.y - lKnee.y) * SEGMENT_COM.shankFoot;
+          weightedX += shankX * SEGMENT_MASS.shankFoot;
+          weightedY += shankY * SEGMENT_MASS.shankFoot;
+          totalMass += SEGMENT_MASS.shankFoot;
+        }
+
+        // COMはフィルター処理済みの値を直接使用
+        const comXf = filteredMap["COM"].x[i];
+        const comYf = filteredMap["COM"].y[i];
 
         const timeSec = originalFrameNumber / fps;
 
@@ -1787,12 +2180,15 @@ function drawStartupLogo() {
       }
 
       const cfRow = [];
-      cfRow.push("cf-freq","","","");
+      cfRow.push("cf-freq","");
+
+      // COMのカットオフ周波数を追加
+      cfRow.push(Math.round(cfMap["COM"].x));
+      cfRow.push(Math.round(cfMap["COM"].y));
 
       function pushCf(name) {
-cfRow.push(Math.round(cfMap[name].x));
-cfRow.push(Math.round(cfMap[name].y));
-
+        cfRow.push(Math.round(cfMap[name].x));
+        cfRow.push(Math.round(cfMap[name].y));
       }
 
       pushCf("R-Ear");
@@ -1819,46 +2215,6 @@ cfRow.push(Math.round(cfMap[name].y));
 
       const noteRow2 = ["Custom points (CP) are not filtered."];
       rowsFiltered.push(noteRow2);
-
-      // ★ 修正1：AJ列にフィルターパラメータを追加
-      if (butterworthParams) {
-        // AJ列は36列目（インデックス35）
-        const paramCol = 35;
-
-        // ヘッダー行からスタート
-        let paramRowIndex = 0;
-
-        // パラメータ情報を追加
-        const paramLines = [
-          "Filtering Parameters",
-          `Input fps: ${butterworthParams.inputFps}`,
-          `Sampling freq (Hz): ${butterworthParams.samplingFreq}`,
-          `Nyquist freq (Hz): ${butterworthParams.nyquistFreq.toFixed(2)}`,
-          "Filter type: 2nd-order Butterworth low-pass",
-          "",
-          "Coefficient of Butterworth:",
-          "a (denominator)",
-          `a[0]=${butterworthParams.a[0].toFixed(6)}`,
-          `a[1]=${butterworthParams.a[1].toFixed(6)}`,
-          `a[2]=${butterworthParams.a[2].toFixed(6)}`,
-          "",
-          "b (numerator)",
-          `b[0]=${butterworthParams.b[0].toFixed(6)}`,
-          `b[1]=${butterworthParams.b[1].toFixed(6)}`,
-          `b[2]=${butterworthParams.b[2].toFixed(6)}`
-        ];
-
-        paramLines.forEach((line, i) => {
-          if (!rowsFiltered[i]) {
-            rowsFiltered[i] = [];
-          }
-          // AJ列まで配列を拡張
-          while (rowsFiltered[i].length < paramCol + 1) {
-            rowsFiltered[i].push("");
-          }
-          rowsFiltered[i][paramCol] = line;
-        });
-      }
     }
 
     /* ---------- 5. Excel 1ファイル保存 ---------- */
