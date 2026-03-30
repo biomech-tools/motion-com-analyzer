@@ -285,22 +285,22 @@ window.addEventListener("load", () => {
 
   // Winter (1990) body segment mass percentages (% of total body mass)
   const SEGMENT_MASS = {
-    headNeck: 0.0826,    // Head + Neck (combined)
-    trunk: 0.551,        // Whole trunk
-    upperArm: 0.0325,    // Upper arm (each)
-    forearmHand: 0.0252, // Forearm + Hand (0.0187 + 0.0065, each)
-    thigh: 0.105,        // Thigh (each)
-    shankFoot: 0.0618    // Shank + Foot (0.0475 + 0.0143, each)
+    headNeck: 0.081,     // Head + Neck（8.1%）
+    trunk: 0.497,        // Trunk（49.7%）
+    upperArm: 0.028,     // Upper arm (each)
+    forearmHand: 0.022,  // Forearm + Hand (0.0187 + 0.0065, each)
+    thigh: 0.100,        // Thigh (each)
+    shankFoot: 0.061     // Shank + Foot (0.0475 + 0.0143, each)
   };
 
   // Winter (1990) segment COM positions (% from proximal end)
   const SEGMENT_COM = {
-    headNeck: 0.50,      // 50% from top (at ear level)
-    trunk: 0.563,        // 56.3% from shoulder to hip
+    headNeck: 0.50,      // 50% at ear level (両耳の中心)
+    trunk: 0.56,         // 56% from shoulder to hip (肩から腰へ)
     upperArm: 0.436,     // 43.6% from shoulder to elbow
     forearmHand: 0.682,  // 68.2% from elbow to wrist (includes hand weight)
     thigh: 0.433,        // 43.3% from hip to knee
-    shankFoot: 0.447     // 44.7% from knee to ankle (includes foot weight)
+    shankFoot: 0.606     // 60.6% from knee to ankle (includes foot weight)
   };
 
   const KP_DEF = [
@@ -548,18 +548,18 @@ if (!j.estimated) {
 
     let weightedX = 0, weightedY = 0, totalMass = 0;
 
-    // Head+Neck segment (耳の中点がCOM)
+    // Head+Neck segment (両耳の中点がCOM) - 8.1%
     const rEar = getJoint("R-Ear");
     const lEar = getJoint("L-Ear");
     if (rEar?.x != null && lEar?.x != null && !rEar.estimated && !lEar.estimated) {
-      const headX = (rEar.x + lEar.x) / 2;
-      const headY = (rEar.y + lEar.y) / 2;
-      weightedX += headX * SEGMENT_MASS.headNeck;
-      weightedY += headY * SEGMENT_MASS.headNeck;
+      const headNeckX = (rEar.x + lEar.x) / 2;
+      const headNeckY = (rEar.y + lEar.y) / 2;
+      weightedX += headNeckX * SEGMENT_MASS.headNeck;
+      weightedY += headNeckY * SEGMENT_MASS.headNeck;
       totalMass += SEGMENT_MASS.headNeck;
     }
 
-    // Trunk segment (肩から腰へ56.3%)
+    // Trunk segment (肩から腰へ56%) - 49.7%
     const rShoulder = getJoint("R-Shoulder");
     const lShoulder = getJoint("L-Shoulder");
     const rHip = getJoint("R-Hip");
@@ -947,7 +947,7 @@ function redrawAll() {
           const pixelDist = Math.hypot(dx, dy);
 
           let realDist = prompt(
-            "Input the actual distance (meters) between the two points.\nCancel = Retry calibration.\n(Don't switch to a different browser.)",
+            "Input the actual distance (meters) between the two points.\nCancel = Retry calibration.\n\n(Don't switch to a different browser.)",
             "1.0"
           );
 
@@ -1086,7 +1086,7 @@ function redrawAll() {
           let skipValid = false;
           while (!skipValid) {
             let skipChoice = prompt(
-              "How many frames should be skipped during analysis?\nInput a value between 0 and 2.\nIf selecting 1 or 2, no filtering will be performed.\n\nCancel = default (0)",
+              "How many frames should be skipped during analysis?\nInput a value between 0 and 2.\nIf selecting 1 or 2, no filtering will be performed.\nCancel = default (0)",
               "0"
             );
 
@@ -1761,10 +1761,10 @@ function drawStartupLogo() {
       const rEar = getJ("R-Ear");
       const lEar = getJ("L-Ear");
       if (rEar?.x != null && lEar?.x != null && !rEar.estimated && !lEar.estimated) {
-        const headX = ((rEar.x + lEar.x) / 2) * scale;
-        const headY = -((rEar.y + lEar.y) / 2 - baselineY) * scale;
-        weightedX += headX * SEGMENT_MASS.headNeck;
-        weightedY += headY * SEGMENT_MASS.headNeck;
+        const headNeckX = ((rEar.x + lEar.x) / 2) * scale;
+        const headNeckY = -((rEar.y + lEar.y) / 2 - baselineY) * scale;
+        weightedX += headNeckX * SEGMENT_MASS.headNeck;
+        weightedY += headNeckY * SEGMENT_MASS.headNeck;
         totalMass += SEGMENT_MASS.headNeck;
       }
 
@@ -2030,10 +2030,10 @@ function drawStartupLogo() {
         const rEar = getRaw("R-Ear");
         const lEar = getRaw("L-Ear");
         if (rEar && lEar) {
-          const headX = (rEar.x + lEar.x) / 2;
-          const headY = (rEar.y + lEar.y) / 2;
-          weightedX += headX * SEGMENT_MASS.headNeck;
-          weightedY += headY * SEGMENT_MASS.headNeck;
+          const headNeckX = (rEar.x + lEar.x) / 2;
+          const headNeckY = (rEar.y + lEar.y) / 2;
+          weightedX += headNeckX * SEGMENT_MASS.headNeck;
+          weightedY += headNeckY * SEGMENT_MASS.headNeck;
           totalMass += SEGMENT_MASS.headNeck;
         }
 
@@ -2485,7 +2485,7 @@ finishBtn.addEventListener("click", () => {
       document.addEventListener("visibilitychange", visibilityChangeHandler2);
 
       const dialog2StartTime = Date.now();
-      const next = confirm("Proceed new analysis?\nCancel = Close program\n(Don't switch to a different browser.)");
+      const next = confirm("Proceed new analysis?\nCancel = Close program\n\n(Don't switch to a different browser.)");
       const dialog2EndTime = Date.now();
 
       // ★ イベントをキャプチャする時間を確保してから判定
